@@ -13,6 +13,7 @@ import {
 } from "@/lib/labels"
 import type { TravelOrderType, TravelOrderStatus, TransportMeans } from "@/generated/prisma/enums"
 import NewTravelOrderModal from "./NewTravelOrderModal"
+import { fmtDate } from "@/lib/formatDate"
 
 type Order = {
   id: number
@@ -65,14 +66,6 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
     const matchStatus = statusFilter === "ALL" || o.status === statusFilter
     return matchSearch && matchStatus
   })
-
-  function formatDate(iso: string) {
-    return new Date(iso).toLocaleDateString("sk-SK", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    })
-  }
 
   function openNew(type: TravelOrderType) {
     setNewType(type)
@@ -180,8 +173,8 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
                   </p>
                 </td>
                 <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">
-                  <p>{formatDate(o.departureAt)}</p>
-                  <p className="text-xs text-gray-400">– {formatDate(o.returnAt)}</p>
+                  <p>{fmtDate(o.departureAt)}</p>
+                  <p className="text-xs text-gray-400">– {fmtDate(o.returnAt)}</p>
                 </td>
                 {isSpravcaPC && (
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">

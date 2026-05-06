@@ -90,14 +90,18 @@ export async function createAsset(formData: FormData): Promise<Result> {
     }
   }
 
+  const currentYear = new Date().getFullYear()
   const yearRaw = (formData.get("yearOfManufacture") as string)?.trim()
   const year = yearRaw ? parseInt(yearRaw) : null
-  if (year !== null && (isNaN(year) || year < 1900 || year > new Date().getFullYear() + 1)) {
-    return { error: "Zadajte platný rok výroby." }
+  if (year !== null && (isNaN(year) || year < 1900 || year > currentYear)) {
+    return { error: `Zadajte platný rok výroby (1900–${currentYear}).` }
   }
 
   const acquisitionDateRaw = (formData.get("acquisitionDate") as string)?.trim()
   const acquisitionDate = acquisitionDateRaw ? new Date(acquisitionDateRaw) : null
+  if (acquisitionDate && acquisitionDate > new Date()) {
+    return { error: "Dátum obstarania nemôže byť v budúcnosti." }
+  }
 
   try {
     await prisma.asset.create({
@@ -224,14 +228,18 @@ export async function updateAsset(
     }
   }
 
+  const currentYear = new Date().getFullYear()
   const yearRaw = (formData.get("yearOfManufacture") as string)?.trim()
   const year = yearRaw ? parseInt(yearRaw) : null
-  if (year !== null && (isNaN(year) || year < 1900 || year > new Date().getFullYear() + 1)) {
-    return { error: "Zadajte platný rok výroby." }
+  if (year !== null && (isNaN(year) || year < 1900 || year > currentYear)) {
+    return { error: `Zadajte platný rok výroby (1900–${currentYear}).` }
   }
 
   const acquisitionDateRaw = (formData.get("acquisitionDate") as string)?.trim()
   const acquisitionDate = acquisitionDateRaw ? new Date(acquisitionDateRaw) : null
+  if (acquisitionDate && acquisitionDate > new Date()) {
+    return { error: "Dátum obstarania nemôže byť v budúcnosti." }
+  }
 
   try {
     const oldAsset = await prisma.asset.findUnique({

@@ -7,7 +7,6 @@ import UsersClient from "./UsersClient"
 export default async function UsersPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect("/login")
-  // TODO: obnoviť na SPRAVCA_KARIET po testovaní
 
   const rawUsers = await prisma.user.findMany({
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],

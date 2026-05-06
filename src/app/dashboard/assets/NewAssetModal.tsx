@@ -193,6 +193,7 @@ export default function NewAssetModal({ onClose }: Props) {
                     name="publicNote"
                     rows={2}
                     placeholder="Viditeľná pre všetkých"
+                    maxLength={1000}
                     className={inputCls}
                   />
                 </Field>
@@ -201,6 +202,7 @@ export default function NewAssetModal({ onClose }: Props) {
                     name="recordNote"
                     rows={2}
                     placeholder="Interná poznámka (nie pre BP)"
+                    maxLength={1000}
                     className={inputCls}
                   />
                 </Field>

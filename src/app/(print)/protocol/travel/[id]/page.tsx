@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import TravelOrderPrint from "./TravelOrderPrint"
+import { fmtDate, fmtDateTime } from "@/lib/formatDate"
 
 export default async function TravelOrderPrintPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getServerSession(authOptions)
@@ -40,10 +41,6 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
   const isSpravcaPC = roles.includes("SPRAVCA_PC")
   if (!isOwner && !isSupervisor && !isSpravcaPC) notFound()
 
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("sk-SK", { day: "2-digit", month: "2-digit", year: "numeric" })
-  const fmtDT = (d: Date) =>
-    d.toLocaleDateString("sk-SK", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
   return (
     <TravelOrderPrint
@@ -54,8 +51,8 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
         startLocation: order.startLocation,
         destination: order.destination,
         countries: order.countries,
-        departureAt: fmtDT(order.departureAt),
-        returnAt: fmtDT(order.returnAt),
+        departureAt: fmtDateTime(order.departureAt),
+        returnAt: fmtDateTime(order.returnAt),
         transport: order.transport,
         vehicleCategory: order.vehicleCategory,
         vehicleRegPlate: order.vehicleRegPlate,
@@ -65,8 +62,8 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
         foreignCurrency: order.foreignCurrency,
         pocketMoney: order.pocketMoney ? Number(order.pocketMoney) : null,
         travelInsurance: order.travelInsurance,
-        supervisorApprovedAt: order.supervisorApprovedAt ? fmt(order.supervisorApprovedAt) : null,
-        managerApprovedAt: order.managerApprovedAt ? fmt(order.managerApprovedAt) : null,
+        supervisorApprovedAt: order.supervisorApprovedAt ? fmtDate(order.supervisorApprovedAt) : null,
+        managerApprovedAt: order.managerApprovedAt ? fmtDate(order.managerApprovedAt) : null,
       }}
       employee={{
         name: `${order.user.firstName} ${order.user.lastName}`,
@@ -75,8 +72,8 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
       supervisor={order.supervisor ? `${order.supervisor.firstName} ${order.supervisor.lastName}` : null}
       manager={order.manager ? `${order.manager.firstName} ${order.manager.lastName}` : null}
       expenseReport={{
-        actualDepartureAt: fmtDT(er.actualDepartureAt),
-        actualReturnAt: fmtDT(er.actualReturnAt),
+        actualDepartureAt: fmtDateTime(er.actualDepartureAt),
+        actualReturnAt: fmtDateTime(er.actualReturnAt),
         actualTransport: er.actualTransport.length > 0 ? er.actualTransport : null,
         actualVehicleCategory: er.actualVehicleCategory,
         actualVehicleRegPlate: er.actualVehicleRegPlate,
@@ -101,10 +98,10 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
         exchangeRate: er.exchangeRate ? Number(er.exchangeRate) : null,
         totalExpenses: Number(er.totalExpenses),
         advanceReceived: Number(er.advanceReceived),
-        supervisorApprovedAt: er.supervisorApprovedAt ? fmt(er.supervisorApprovedAt) : null,
-        managerApprovedAt: er.managerApprovedAt ? fmt(er.managerApprovedAt) : null,
+        supervisorApprovedAt: er.supervisorApprovedAt ? fmtDate(er.supervisorApprovedAt) : null,
+        managerApprovedAt: er.managerApprovedAt ? fmtDate(er.managerApprovedAt) : null,
       }}
-      generatedAt={fmt(new Date())}
+      generatedAt={fmtDate(new Date())}
     />
   )
 }

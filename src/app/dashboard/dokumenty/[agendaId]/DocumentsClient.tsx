@@ -9,6 +9,7 @@ import {
   UserPlus, UserMinus, Shield,
 } from "lucide-react"
 import { createDocument, updateDocument, deleteDocument, setAgendaGestor } from "../actions"
+import { fmtDate } from "@/lib/formatDate"
 
 type Confidentiality = "VEREJNY" | "INTERNI" | "DOVERNI"
 
@@ -227,7 +228,7 @@ export default function DocumentsClient({
                     </span>
                   </td>
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
-                    {new Date(doc.datumSchvalenia).toLocaleDateString("sk-SK")}
+                    {fmtDate(doc.datumSchvalenia)}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${confidentialityColors[doc.confidentiality]}`}>

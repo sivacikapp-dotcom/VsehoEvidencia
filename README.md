@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# VšehoEvidencia
 
-## Getting Started
+Interná podniková aplikácia na správu majetku, dokumentov a pracovných ciest. Určená pre organizácie, ktoré potrebujú evidovať IT a kancelárske vybavenie, spravovať riadené dokumenty s rôznymi úrovňami dôvernosti a spracovávať tuzemské aj zahraničné pracovné cesty podľa zákona 283/2002 Z. z.
 
-First, run the development server:
+## Technologický základ
+
+| Vrstva | Technológia |
+| ------ | ----------- |
+| Framework | Next.js 16.2.4 (App Router, Server Actions) |
+| Databáza | PostgreSQL + Prisma ORM 7 |
+| Autentifikácia | NextAuth.js 4 (JWT stratégia, bcrypt) |
+| Štýlovanie | Tailwind CSS 4 |
+| Ikony | Lucide React |
+| Runtime | Node.js 20+ |
+
+## Požiadavky
+
+- Node.js >= 20
+- PostgreSQL >= 14
+- npm
+
+## Inštalácia
 
 ```bash
+# 1. Klonovanie repozitára
+git clone <url-repozitara>
+cd vsehoevidencia
+
+# 2. Inštalácia závislostí
+npm install
+
+# 3. Konfigurácia prostredia
+cp .env.example .env
+# Vyplňte hodnoty v .env (viď sekciu Konfigurácia)
+
+# 4. Vytvorenie databázy a spustenie migrácií
+npx prisma migrate deploy
+
+# 5. Voliteľne: naplnenie počiatočnými dátami
+npm run seed
+
+# 6. Spustenie vývojového servera
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Aplikácia bude dostupná na `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Konfigurácia (.env)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Súbor `.env` **nesmie byť** commitnutý do repozitára (je v `.gitignore`). Vytvorte ho podľa šablóny:
 
-## Learn More
+```env
+# Pripojenie k databáze (Prisma CLI)
+DATABASE_URL="postgresql://POUZIVATEL:HESLO@localhost:5432/vsehoevidencia?schema=public"
 
-To learn more about Next.js, take a look at the following resources:
+# Priame pripojenie pre Prisma Client (bez ?schema=public)
+DATABASE_DIRECT_URL="postgresql://POUZIVATEL:HESLO@localhost:5432/vsehoevidencia"
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# NextAuth
+NEXTAUTH_URL="https://vasa-domena.sk"
+NEXTAUTH_SECRET="<min. 32 náhodných znakov, napr. openssl rand -base64 32>"
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+> **Dôležité:** `NEXTAUTH_SECRET` musí byť kryptograficky náhodný reťazec dlhý aspoň 32 znakov.
+> Nikdy nepoužívajte rovnaké heslo databázy pre vývoj aj produkciu.
 
-## Deploy on Vercel
+## Dostupné príkazy
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+npm run dev        # Vývojový server s hot-reload
+npm run build      # Produkčný build
+npm run start      # Spustenie produkčného buildu
+npm run lint       # Kontrola kódu cez ESLint
+npm run seed       # Naplnenie DB počiatočnými dátami (len vývoj)
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Produkčné nasadenie
+
+```bash
+npm run build
+npm run start
+```
+
+Pred nasadením skontrolujte:
+
+- [ ] `NEXTAUTH_URL` smeruje na skutočnú HTTPS adresu
+- [ ] Databázové heslo je dostatočne silné a odlišné od vývojového
+- [ ] `NEXTAUTH_SECRET` je unikátny a nepredvídateľný
+- [ ] PostgreSQL nie je verejne dostupný (iba localhost alebo private sieť)
+- [ ] Adresár `uploads/` má správne oprávnenia (zápis pre Node.js proces)
+
+## Adresár nahrávaných súborov
+
+Súbory nahrané používateľmi sa ukladajú do `uploads/` v koreňovom adresári projektu:
+
+```text
+uploads/
+  assets/    # Prílohy k majetku
+  docs/      # Prílohy k dokumentom
+  travel/    # Prílohy k pracovným cestám
+```
+
+Tento adresár **nesmie byť** verejne prístupný cez webový server. Prístup prebieha výlučne cez autorizované API cesty.
+
+## Moduly aplikácie
+
+| Modul | URL cesta | Popis |
+| ----- | --------- | ----- |
+| Majetok | `/dashboard/assets` | Evidencia IT a kancelárskeho vybavenia |
+| Môj majetok | `/dashboard/my-assets` | Majetok priradený prihlásenému používateľovi |
+| Moja karta | `/dashboard/my-card` | Osobný prehľad s BP informáciami |
+| Miestnosti | `/dashboard/rooms` | Evidencia miestností a ich vybavenia |
+| Dokumenty | `/dashboard/dokumenty` | Riadená dokumentácia s verziovaním |
+| Pracovné cesty | `/dashboard/pracovne-cesty` | Príkazy na pracovné cesty a vyúčtovania |
+| Používatelia | `/dashboard/users` | Správa používateľov a rolí |
+| Nastavenia | `/dashboard/nastavenia` | Sadzby náhrad za pracovné cesty |

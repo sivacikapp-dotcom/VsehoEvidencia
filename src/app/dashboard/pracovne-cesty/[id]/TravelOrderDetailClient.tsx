@@ -16,6 +16,7 @@ import {
 } from "@/lib/labels"
 import type { TravelOrderType, TravelOrderStatus, TransportMeans, VehicleCategory } from "@/generated/prisma/enums"
 import { kmRateLabel, buildDayInfos, formatLocalDate, type TravelRates, DEFAULT_TRAVEL_RATES } from "@/lib/travelUtils"
+import { fmtDate, fmtDateTime } from "@/lib/formatDate"
 import type { DayInfo } from "@/lib/travelUtils"
 import {
   submitTravelOrder,
@@ -161,15 +162,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
     }
   }
 
-  function fmt(iso: string, withTime = false) {
-    return new Date(iso).toLocaleDateString("sk-SK", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      ...(withTime ? { hour: "2-digit", minute: "2-digit" } : {}),
-    })
-  }
-
   function fmtEUR(n: number | null) {
     if (n == null) return "—"
     return n.toFixed(2) + " €"
@@ -232,7 +224,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
             </span>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            {order.user.firstName} {order.user.lastName} · Vytvorený {fmt(order.createdAt)}
+            {order.user.firstName} {order.user.lastName} · Vytvorený {fmtDate(order.createdAt)}
           </p>
         </div>
       </div>
@@ -263,8 +255,8 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
             <Row label="Miesto odchodu" value={order.startLocation} />
             <Row label="Cieľ cesty" value={order.destination} />
             {order.countries && <Row label="Navštívené krajiny" value={order.countries} />}
-            <Row label="Odchod" value={fmt(order.departureAt, true)} />
-            <Row label="Návrat" value={fmt(order.returnAt, true)} />
+            <Row label="Odchod" value={fmtDateTime(order.departureAt)} />
+            <Row label="Návrat" value={fmtDateTime(order.returnAt)} />
             <Row label="Plánované trvanie" value={`${plannedHours.toFixed(1)} h — ${dietTier(plannedHours)}`} />
             <Row label="Dopravný prostriedok" value={order.transport.map(t => transportMeansLabels[t]).join(", ")} />
             {order.vehicleCategory && (
@@ -339,7 +331,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
                 orderTransport={order.transport}
                 orderDepartureAt={order.departureAt}
                 orderReturnAt={order.returnAt}
-                fmt={fmt}
                 fmtEUR={fmtEUR}
               />
             </div>
@@ -372,7 +363,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
               rejectedAt={order.supervisorRejectedAt}
               status={order.status}
               relevantStatuses={["PENDING_SUPERVISOR", "APPROVED", "REJECTED"]}
-              fmt={fmt}
             />
           </div>
 
@@ -388,7 +378,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
                 rejectedAt={er.supervisorRejectedAt}
                 status={erStatus ?? "DRAFT"}
                 relevantStatuses={["PENDING_SUPERVISOR", "PENDING_MANAGER", "APPROVED", "REJECTED"]}
-                fmt={fmt}
               />
               <div className="border-l-2 border-gray-200 dark:border-gray-700 ml-4 h-4" />
               <ApprovalStep
@@ -399,7 +388,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
                 rejectedAt={er.managerRejectedAt}
                 status={erStatus ?? "DRAFT"}
                 relevantStatuses={["PENDING_MANAGER", "APPROVED", "REJECTED"]}
-                fmt={fmt}
               />
             </div>
           )}
@@ -733,7 +721,7 @@ function ActionBtn({
 }
 
 function ApprovalStep({
-  number, label, person, approvedAt, rejectedAt, status, relevantStatuses, fmt,
+  number, label, person, approvedAt, rejectedAt, status, relevantStatuses,
 }: {
   number: number
   label: string
@@ -742,7 +730,6 @@ function ApprovalStep({
   rejectedAt: string | null
   status: TravelOrderStatus
   relevantStatuses: TravelOrderStatus[]
-  fmt: (s: string, t?: boolean) => string
 }) {
   const active = relevantStatuses.includes(status)
   const approved = !!approvedAt
@@ -767,10 +754,10 @@ function ApprovalStep({
         <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{label}</p>
         <p className="text-xs text-gray-500 dark:text-gray-400">{person}</p>
         {approved && (
-          <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">Schválené {fmt(approvedAt!, true)}</p>
+          <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">Schválené {fmtDateTime(approvedAt!)}</p>
         )}
         {rejected && (
-          <p className="text-xs text-red-500 mt-0.5">Zamietnuté {fmt(rejectedAt!, true)}</p>
+          <p className="text-xs text-red-500 mt-0.5">Zamietnuté {fmtDateTime(rejectedAt!)}</p>
         )}
       </div>
     </div>
@@ -926,14 +913,13 @@ function sameTransportArrays(a: TransportMeans[], b: TransportMeans[]) {
 }
 
 function ExpenseReportView({
-  er, orderType, orderTransport, orderDepartureAt, orderReturnAt, fmt, fmtEUR,
+  er, orderType, orderTransport, orderDepartureAt, orderReturnAt, fmtEUR,
 }: {
   er: ExpenseReport
   orderType: TravelOrderType
   orderTransport: TransportMeans[]
   orderDepartureAt: string
   orderReturnAt: string
-  fmt: (s: string, t?: boolean) => string
   fmtEUR: (n: number | null) => string
 }) {
   const storedMeals = er.mealsPerDay ? JSON.parse(er.mealsPerDay) : []
@@ -953,15 +939,15 @@ function ExpenseReportView({
   if (depChanged) {
     diffs.push({
       label: "Odchod",
-      original: fmt(orderDepartureAt, true),
-      changed: fmt(er.actualDepartureAt, true),
+      original: fmtDateTime(orderDepartureAt),
+      changed: fmtDateTime(er.actualDepartureAt),
     })
   }
   if (retChanged) {
     diffs.push({
       label: "Návrat",
-      original: fmt(orderReturnAt, true),
-      changed: fmt(er.actualReturnAt, true),
+      original: fmtDateTime(orderReturnAt),
+      changed: fmtDateTime(er.actualReturnAt),
     })
   }
   if (transportChanged) {
@@ -999,8 +985,8 @@ function ExpenseReportView({
         </div>
       )}
 
-      <Row label="Skutočný odchod" value={fmt(er.actualDepartureAt, true)} />
-      <Row label="Skutočný návrat" value={fmt(er.actualReturnAt, true)} />
+      <Row label="Skutočný odchod" value={fmtDateTime(er.actualDepartureAt)} />
+      <Row label="Skutočný návrat" value={fmtDateTime(er.actualReturnAt)} />
       <Row label="Skutočné trvanie" value={`${hours.toFixed(1)} h`} />
       <Row label="Dopravný prostriedok" value={effectiveTransport.map(t => transportMeansLabels[t]).join(", ")} />
       {er.actualTransport?.length && er.actualVehicleRegPlate && (

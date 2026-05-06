@@ -203,8 +203,8 @@ export async function notifyTravelOrderForManager(
     data: targets.map((m) => ({
       userId: m.id,
       type: "TRAVEL_ORDER_FOR_MANAGER" as const,
-      title: "Cestovný príkaz schválený",
-      message: `Cestovný príkaz ${orderNumber} (${ownerName}) bol schválený nadriadeným.`,
+      title: "Cestovný príkaz na finančné schválenie",
+      message: `Cestovný príkaz ${orderNumber} (${ownerName}) bol schválený nadriadeným a čaká na finančné schválenie.`,
       travelOrderId,
       mustAcknowledge: false,
     })),

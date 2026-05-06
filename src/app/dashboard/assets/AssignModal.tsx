@@ -198,6 +198,7 @@ export default function AssignModal({
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
                 placeholder="Voliteľné"
+                maxLength={500}
                 className={inputCls}
               />
             </div>

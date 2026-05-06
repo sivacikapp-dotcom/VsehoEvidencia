@@ -10,6 +10,7 @@ import type { Role } from "@/generated/prisma/enums"
 type Result = { error?: string; success?: boolean }
 
 const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{10,}$/
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function validatePassword(password: string): string | null {
   if (!password || password.length < 10) return "Heslo musí mať aspoň 10 znakov."
@@ -25,7 +26,17 @@ export async function createUser(formData: FormData): Promise<Result> {
     return { error: "Nemáte oprávnenie vytvárať používateľov." }
   }
 
+  const firstName = (formData.get("firstName") as string)?.trim()
+  const lastName = (formData.get("lastName") as string)?.trim()
+  if (!firstName) return { error: "Meno je povinné." }
+  if (!lastName) return { error: "Priezvisko je povinné." }
+  if (firstName.length > 100 || lastName.length > 100)
+    return { error: "Meno alebo priezvisko je príliš dlhé." }
+
   const email = (formData.get("email") as string)?.trim().toLowerCase()
+  if (!email || !EMAIL_PATTERN.test(email))
+    return { error: "Zadajte platnú e-mailovú adresu." }
+
   const password = (formData.get("password") as string)?.trim()
   const passwordError = validatePassword(password)
   if (passwordError) return { error: passwordError }
@@ -43,14 +54,7 @@ export async function createUser(formData: FormData): Promise<Result> {
   try {
     const hash = await bcrypt.hash(password, 12)
     await prisma.user.create({
-      data: {
-        firstName: (formData.get("firstName") as string).trim(),
-        lastName: (formData.get("lastName") as string).trim(),
-        email,
-        password: hash,
-        roles,
-        supervisorId: supervisorId || null,
-      },
+      data: { firstName, lastName, email, password: hash, roles, supervisorId: supervisorId || null },
     })
     revalidatePath("/dashboard/users")
     return { success: true }

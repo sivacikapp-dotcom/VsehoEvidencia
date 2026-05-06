@@ -14,6 +14,7 @@ import {
   grantAttachmentAccess, revokeAttachmentAccess,
   createDocumentVersion, createAttachmentVersion,
 } from "../../actions"
+import { fmtDate } from "@/lib/formatDate"
 
 type Confidentiality = "VEREJNY" | "INTERNI" | "DOVERNI"
 interface DocUser { id: number; name: string; email: string }
@@ -96,10 +97,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <dd className="mt-1">{children}</dd>
     </div>
   )
-}
-
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("sk-SK", { day: "2-digit", month: "2-digit", year: "numeric" })
 }
 
 // ─── Attachment Modal (create / edit / new version) ───────────────────────────

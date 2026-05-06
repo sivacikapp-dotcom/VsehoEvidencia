@@ -470,13 +470,13 @@ function EditAssetModal({ asset, onClose }: { asset: AssetForEdit; onClose: () =
               <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Poznámky</p>
               <div className="space-y-3">
                 <Field label="Verejná poznámka">
-                  <textarea name="publicNote" rows={2} defaultValue={asset.publicNote ?? ""} placeholder="Viditeľná pre všetkých" className={inputCls} />
+                  <textarea name="publicNote" rows={2} defaultValue={asset.publicNote ?? ""} placeholder="Viditeľná pre všetkých" maxLength={1000} className={inputCls} />
                 </Field>
                 <Field label="Evidenčná poznámka">
-                  <textarea name="recordNote" rows={2} defaultValue={asset.recordNote ?? ""} placeholder="Interná poznámka (nie pre BP)" className={inputCls} />
+                  <textarea name="recordNote" rows={2} defaultValue={asset.recordNote ?? ""} placeholder="Interná poznámka (nie pre BP)" maxLength={1000} className={inputCls} />
                 </Field>
                 <Field label="BP Poznámka">
-                  <textarea name="securityNote" rows={2} defaultValue={asset.securityNote ?? ""} placeholder="Pre bezpečnostného pracovníka" className={inputCls} />
+                  <textarea name="securityNote" rows={2} defaultValue={asset.securityNote ?? ""} placeholder="Pre bezpečnostného pracovníka" maxLength={2000} className={inputCls} />
                 </Field>
               </div>
             </div>
@@ -635,6 +635,7 @@ function EditSecurityNoteModal({ assetId, currentNote, onClose }: { assetId: num
               onChange={e => setNote(e.target.value)}
               rows={4}
               placeholder="Bezpečnostná poznámka..."
+              maxLength={2000}
               className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
             {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</p>}

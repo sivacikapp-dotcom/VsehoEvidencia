@@ -74,9 +74,22 @@ export type CreateTravelOrderInput = {
   supervisorId?: number
 }
 
+function validateTravelOrderInput(data: Omit<CreateTravelOrderInput, "type">) {
+  if (!data.purpose?.trim()) throw new Error("Účel cesty je povinný.")
+  if (!data.startLocation?.trim()) throw new Error("Miesto odchodu je povinné.")
+  if (!data.destination?.trim()) throw new Error("Cieľ cesty je povinný.")
+  if (!data.departureAt || !data.returnAt) throw new Error("Dátumy odchodu a návratu sú povinné.")
+  const dep = new Date(data.departureAt)
+  const ret = new Date(data.returnAt)
+  if (isNaN(dep.getTime()) || isNaN(ret.getTime())) throw new Error("Neplatný formát dátumu.")
+  if (ret <= dep) throw new Error("Dátum návratu musí byť neskôr ako dátum odchodu.")
+  if (!data.transport || data.transport.length === 0) throw new Error("Vyberte aspoň jeden dopravný prostriedok.")
+}
+
 export async function createTravelOrder(data: CreateTravelOrderInput) {
   const user = await getSession()
 
+  validateTravelOrderInput(data)
   const orderNumber = await generateOrderNumber(data.type)
 
   const created = await prisma.travelOrder.create({
@@ -115,6 +128,8 @@ export async function updateTravelOrder(
   data: Omit<CreateTravelOrderInput, "type">
 ) {
   const user = await getSession()
+
+  validateTravelOrderInput(data)
 
   const order = await prisma.travelOrder.findUnique({ where: { id } })
   if (!order) throw new Error("Príkaz neexistuje.")
@@ -207,14 +222,13 @@ export async function supervisorApproveTravelOrder(id: number) {
   await prisma.travelOrder.update({
     where: { id },
     data: {
-      status: "APPROVED",
+      status: "PENDING_MANAGER",
       supervisorApprovedAt: new Date(),
       supervisorRejectedAt: null,
     },
   })
 
   await dismissPendingNotification(uid(user), id, "TRAVEL_ORDER_SUBMITTED")
-  await notifyTravelOrderApproved(id, order.orderNumber, order.user.id)
   await notifyTravelOrderForManager(
     id,
     order.orderNumber,
