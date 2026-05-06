@@ -1,0 +1,549 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+enum AssetType {
+  Kluc
+  Cip
+  Notebook
+  MobilnyTelefon
+  Monitor
+  Klavesnica
+  Mys
+  DokovaciaStanica
+  Peciatka
+  Sluchadla
+  SIMKarta
+  NapajaciAdapter
+  Stolicka
+  Stol
+  Skartovacka
+  Reproduktor
+  USBKluc
+  Projektor
+  Platno
+  Tlaciaren
+  TaskaNaNotebook
+  ExternyDisk
+  PevnaLinka
+  Server
+  Kvetinac
+  SmetnyKos
+  Router
+  CistickaVzduchu
+  Kreslo
+  Gauc
+  Ine
+}
+
+enum Brand {
+  Apple
+  Lenovo
+  HP
+  Dell
+  Samsung
+  Asus
+  Sony
+  Neurcena
+}
+
+enum UsagePlace {
+  Office
+  HomeOffice
+  Prenosny
+}
+
+enum AllocationStatus {
+  Neprideleny_Volny
+  Neprideleny_BCM
+  Prideleny_Recipient
+  Prideleny_Room
+  Vyradeny
+}
+
+enum FunctionStatus {
+  Funkcny
+  Pokazeny_Poskodeny
+  NaLikvidaciu
+}
+
+enum AssetKind {
+  DlhodobyHmotny
+  DlhodobyNehmotny
+  DrobnyHmotny
+  DrobnyNehmotny
+  Prenajaty
+  Leasing
+}
+
+enum Role {
+  PRIJEMCA
+  NADRIADENY
+  BEZPECNOSTNY_PRACOVNIK
+  SPRAVCA_KARIET
+  SPRAVCA_PC
+}
+
+enum TravelOrderType {
+  TUZEMSKY
+  ZAHRANICNY
+}
+
+enum TravelOrderStatus {
+  DRAFT
+  PENDING_SUPERVISOR
+  PENDING_MANAGER
+  APPROVED
+  REJECTED
+}
+
+enum TransportMeans {
+  VLASTNE_VOZIDLO
+  VEREJNY_TRANSPORT
+  SLUZOBNE_VOZIDLO
+  TAXIK
+  INE
+}
+
+enum VehicleCategory {
+  OSOBNE_VOZIDLO
+  JEDNOSTOPOVE
+}
+
+enum NotificationType {
+  ASSET_CHANGED
+  ASSET_ASSIGNED
+  ASSET_RETURNED
+  ASSET_ACCEPTED
+  DOCUMENT_ADDED
+  DOCUMENT_DELETED
+  TRAVEL_ORDER_SUBMITTED
+  TRAVEL_ORDER_FOR_MANAGER
+  TRAVEL_ORDER_APPROVED
+  TRAVEL_ORDER_REJECTED
+  EXPENSE_REPORT_SUBMITTED
+  EXPENSE_REPORT_FOR_MANAGER
+  EXPENSE_REPORT_APPROVED
+  EXPENSE_REPORT_REJECTED
+}
+
+enum AttachmentVisibility {
+  Everyone
+  ManagersAndSecurity
+  OwnRoleOnly
+}
+
+enum DocRole {
+  SPRAVCA_DOKUMENTOV
+  CITATEL
+}
+
+enum Confidentiality {
+  VEREJNY
+  INTERNI
+  DOVERNI
+}
+
+model Asset {
+  id                Int              @id @default(autoincrement())
+  type              AssetType
+  name              String
+  brand             Brand            @default(Neurcena)
+  serialNumber      String?          @unique
+  usagePlace        UsagePlace
+  yearOfManufacture Int?
+  allocationStatus  AllocationStatus @default(Neprideleny_Volny)
+  functionStatus    FunctionStatus   @default(Funkcny)
+  publicNote        String?
+  kind              AssetKind
+  acquisitionDate   DateTime?
+  recordNote        String?
+  securityNote      String?
+  isSecurity        Boolean          @default(false)
+
+  recipientAssignments AssetRecipientAssignment[]
+  roomAssignments      AssetRoomAssignment[]
+  notifications        Notification[]
+  attachments          AssetAttachment[]
+
+  // BP fields – Notebook
+  bpVDomene          Boolean?
+  bpNazovVDomene     String?
+  bpAktualizovanyDna DateTime?
+
+  // BP fields – MobilnyTelefon
+  bpEset             Boolean?
+  bpImei1            String?
+  bpImei2            String?
+  bpPodporovanyDo    DateTime?
+
+  // BP fields – SIMKarta
+  bpTelefonneCislo   String?
+
+  // BP fields – USBKluc + ExternyDisk
+  bpPovolenyVDomene  Boolean?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model User {
+  id           Int    @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  email        String @unique
+  password     String
+  roles        Role[]
+
+  supervisorId Int?
+  supervisor   User?  @relation("UserToSupervisor", fields: [supervisorId], references: [id])
+  subordinates User[] @relation("UserToSupervisor")
+
+  assetAssignments    AssetRecipientAssignment[]
+  roomAccesses        UserRoomAccess[]
+  notifications       Notification[]
+  uploadedAttachments AssetAttachment[]
+
+  docRole               DocRole          @default(CITATEL)
+  agendaGestors         AgendaGestor[]
+  documentGestors       DocumentGestor[]
+  documentAccesses      DocumentAccess[]
+  attachmentAccesses    DocumentAttachmentAccess[]
+
+  travelOrders           TravelOrder[]    @relation("TravelOrderUser")
+  supervisedTravelOrders TravelOrder[]    @relation("TravelOrderSupervisor")
+  managedTravelOrders    TravelOrder[]    @relation("TravelOrderManager")
+  expenseReportAttachments ExpenseReportAttachment[]
+  travelRateConfigs      TravelRateConfig[]
+}
+
+model AssetRecipientAssignment {
+  id             Int       @id @default(autoincrement())
+  assetId        Int
+  asset          Asset     @relation(fields: [assetId], references: [id])
+  userId         Int
+  user           User      @relation(fields: [userId], references: [id])
+
+  assignedAt     DateTime  @default(now())
+  assignedBy     String
+  assignmentNote String?
+
+  returnedAt     DateTime?
+  returnedTo     String?
+  returnNote     String?
+}
+
+model Room {
+  id       Int    @id @default(autoincrement())
+  name     String @unique
+
+  accesses UserRoomAccess[]
+  assets   AssetRoomAssignment[]
+}
+
+model AssetRoomAssignment {
+  id             Int       @id @default(autoincrement())
+  assetId        Int
+  asset          Asset     @relation(fields: [assetId], references: [id])
+  roomId         Int
+  room           Room      @relation(fields: [roomId], references: [id])
+
+  assignedAt     DateTime  @default(now())
+  assignedBy     String
+  assignmentNote String?
+
+  removedAt      DateTime?
+  removedBy      String?
+  removalNote    String?
+}
+
+model Notification {
+  id              Int              @id @default(autoincrement())
+  userId          Int
+  user            User             @relation(fields: [userId], references: [id])
+  type            NotificationType
+  title           String
+  message         String
+  assetId         Int?
+  asset           Asset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  documentId      Int?
+  document        Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  travelOrderId   Int?
+  travelOrder     TravelOrder?     @relation(fields: [travelOrderId], references: [id], onDelete: SetNull)
+  mustAcknowledge Boolean          @default(false)
+  acknowledgedAt  DateTime?
+  dismissedAt     DateTime?
+  createdAt       DateTime         @default(now())
+}
+
+model UserRoomAccess {
+  userId Int
+  roomId Int
+  user   User @relation(fields: [userId], references: [id])
+  room   Room @relation(fields: [roomId], references: [id])
+
+  @@id([userId, roomId])
+}
+
+model AssetAttachment {
+  id           Int                  @id @default(autoincrement())
+  assetId      Int
+  asset        Asset                @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  storedName   String
+  originalName String
+  mimeType     String
+  size         Int
+  visibility   AttachmentVisibility
+  uploaderRoles Role[]
+  uploadedById Int
+  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  uploaderName String
+  createdAt    DateTime             @default(now())
+}
+
+model Agenda {
+  id        Int            @id @default(autoincrement())
+  name      String         @unique
+  createdAt DateTime       @default(now())
+  documents Document[]
+  gestors   AgendaGestor[]
+}
+
+model Document {
+  id                    Int             @id @default(autoincrement())
+  znacka                String
+  nazov                 String
+  datumSchvalenia       DateTime
+  datumPrvehoSchvalenia DateTime?       // null for v1; copied from v1 for v2+
+  version               Int             @default(1)
+  parentId              Int?
+  parent                Document?       @relation("DocumentVersions", fields: [parentId], references: [id], onDelete: Cascade)
+  versions              Document[]      @relation("DocumentVersions")
+  isLatest              Boolean         @default(true)
+  prilohaPath           String?
+  prilohaName           String?
+  confidentiality       Confidentiality @default(INTERNI)
+  agendaId              Int
+  agenda                Agenda          @relation(fields: [agendaId], references: [id], onDelete: Cascade)
+  gestors               DocumentGestor[]
+  accesses              DocumentAccess[]
+  attachments           DocumentAttachment[]
+  notifications         Notification[]
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+}
+
+model AgendaGestor {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agendaId Int
+  agenda   Agenda @relation(fields: [agendaId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, agendaId])
+}
+
+model DocumentGestor {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId Int
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentId])
+}
+
+model DocumentAttachment {
+  id                    Int             @id @default(autoincrement())
+  documentId            Int
+  document              Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  znacka                String
+  nazov                 String
+  datumSchvalenia       DateTime        @default(now())
+  datumPrvehoSchvalenia DateTime?       // null for v1; copied from v1 for v2+
+  version               Int             @default(1)
+  parentId              Int?
+  parent                DocumentAttachment? @relation("AttachmentVersions", fields: [parentId], references: [id], onDelete: Cascade)
+  versions              DocumentAttachment[] @relation("AttachmentVersions")
+  isLatest              Boolean         @default(true)
+  confidentiality       Confidentiality
+  filePath              String?
+  fileName              String?
+  createdAt             DateTime        @default(now())
+  accesses              DocumentAttachmentAccess[]
+}
+
+model DocumentAttachmentAccess {
+  id           Int                @id @default(autoincrement())
+  userId       Int
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachmentId Int
+  attachment   DocumentAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  grantedAt    DateTime           @default(now())
+  grantedById  Int?
+
+  @@unique([userId, attachmentId])
+}
+
+model DocumentAccess {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentId  Int
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  grantedAt   DateTime @default(now())
+  grantedById Int?
+
+  @@unique([userId, documentId])
+}
+
+model TravelOrder {
+  id              Int               @id @default(autoincrement())
+  orderNumber     String            @unique
+  type            TravelOrderType
+  status          TravelOrderStatus @default(DRAFT)
+
+  userId          Int
+  user            User              @relation("TravelOrderUser", fields: [userId], references: [id])
+
+  purpose         String
+  startLocation   String
+  destination     String
+  departureAt     DateTime
+  returnAt        DateTime
+
+  transport        TransportMeans[]
+  vehicleCategory  VehicleCategory?
+  vehicleRegPlate  String?
+  engineVolume     Int?
+
+  advanceEUR      Decimal?          @db.Decimal(10, 2)
+
+  // Zahraničná cesta
+  countries       String?
+  advanceForeign  Decimal?          @db.Decimal(10, 2)
+  foreignCurrency String?
+  pocketMoney     Decimal?          @db.Decimal(10, 2)
+  travelInsurance Boolean           @default(false)
+
+  supervisorId         Int?
+  supervisor           User?         @relation("TravelOrderSupervisor", fields: [supervisorId], references: [id])
+  supervisorApprovedAt DateTime?
+  supervisorRejectedAt DateTime?
+
+  managerId            Int?
+  manager              User?         @relation("TravelOrderManager", fields: [managerId], references: [id])
+  managerApprovedAt    DateTime?
+  managerRejectedAt    DateTime?
+
+  rejectionNote   String?
+
+  expenseReport   TravelExpenseReport?
+  notifications   Notification[]
+
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+model ExpenseReportAttachment {
+  id              Int                 @id @default(autoincrement())
+  expenseReportId Int
+  expenseReport   TravelExpenseReport @relation(fields: [expenseReportId], references: [id], onDelete: Cascade)
+  storedName      String
+  originalName    String
+  mimeType        String
+  size            Int
+  uploadedById    Int
+  uploadedBy      User                @relation(fields: [uploadedById], references: [id])
+  createdAt       DateTime            @default(now())
+}
+
+model TravelRateConfig {
+  id           Int      @id @default(autoincrement())
+  validFrom    DateTime @db.Date
+  diet5to12    Decimal  @db.Decimal(8, 2)
+  diet12to18   Decimal  @db.Decimal(8, 2)
+  dietOver18   Decimal  @db.Decimal(8, 2)
+  breakfastPct Decimal  @db.Decimal(5, 2)
+  lunchPct     Decimal  @db.Decimal(5, 2)
+  dinnerPct    Decimal  @db.Decimal(5, 2)
+  kmJednostopove   Decimal @db.Decimal(6, 4)
+  kmOsobneDoLimit  Decimal @db.Decimal(6, 4)
+  kmOsobneNadLimit Decimal @db.Decimal(6, 4)
+  kmEngineLimit    Int
+  createdAt    DateTime @default(now())
+  createdById  Int?
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model TravelExpenseReport {
+  id              Int         @id @default(autoincrement())
+  travelOrderId   Int         @unique
+  travelOrder     TravelOrder @relation(fields: [travelOrderId], references: [id], onDelete: Cascade)
+
+  actualDepartureAt DateTime
+  actualReturnAt    DateTime
+
+  // Diéty (§5 zákona 283/2002 Z.z.) — JSON pole DayMealEntry[] pre každý deň cesty
+  mealsPerDay     String?
+  dietAmount      Decimal     @db.Decimal(10, 2)
+
+  // Náhrada za použitie súkromného vozidla (§7)
+  kmDriven        Decimal?    @db.Decimal(8, 1)
+  kmBasicRate     Decimal?    @db.Decimal(6, 4)
+  fuelConsumption Decimal?    @db.Decimal(5, 2)
+  fuelPricePerL   Decimal?    @db.Decimal(6, 4)
+  kmCompensation  Decimal?    @db.Decimal(10, 2)
+
+  // Náklady na verejnú dopravu (§8 zák. 283/2002 Z.z.)
+  publicTransportCost  Decimal? @db.Decimal(10, 2)
+  // JSON: [{description: string, amount: number}]
+  publicTransportItems String?
+
+  // Náklady na taxi
+  taxiCost        Decimal?    @db.Decimal(10, 2)
+
+  // Ďalšie výdavky
+  accommodation     Decimal?    @db.Decimal(10, 2)
+  // JSON: [{description, price, companyCard, employee}]
+  accommodationItems String?
+  parking           Decimal?    @db.Decimal(10, 2)
+  otherExpenses     Decimal?    @db.Decimal(10, 2)
+  otherExpensesNote String?
+  // JSON: [{description: string, amount: number}]
+  otherExpenseItems String?
+
+  // Zahraničná cesta
+  foreignDiet     Decimal?    @db.Decimal(10, 2)
+  pocketMoneyPaid Decimal?    @db.Decimal(10, 2)
+  exchangeRate    Decimal?    @db.Decimal(10, 4)
+
+  // Zmena dopravy oproti príkazu (prázdne pole = rovnaká ako v príkaze)
+  actualTransport  TransportMeans[]
+  actualVehicleCategory VehicleCategory?
+  actualVehicleRegPlate String?
+  actualEngineVolume    Int?
+
+  // Rekapitulácia
+  totalExpenses   Decimal     @db.Decimal(10, 2)
+  advanceReceived Decimal     @db.Decimal(10, 2)
+
+  // Schvaľovací workflow vyúčtovania
+  status               TravelOrderStatus @default(DRAFT)
+  supervisorApprovedAt DateTime?
+  supervisorRejectedAt DateTime?
+  managerApprovedAt    DateTime?
+  managerRejectedAt    DateTime?
+  managerId            Int?
+  rejectionNote        String?
+
+  attachments     ExpenseReportAttachment[]
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+}
