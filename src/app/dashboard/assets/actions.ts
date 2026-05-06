@@ -85,7 +85,7 @@ export async function createAsset(formData: FormData): Promise<Result> {
     const existing = await prisma.asset.findUnique({ where: { serialNumber } })
     if (existing) {
       return {
-        error: `Výrobné číslo „${serialNumber}" je už evidované (ID: ${existing.id} – ${existing.name}).`,
+        error: `Výrobné číslo „${serialNumber}" je už evidované.`,
       }
     }
   }
@@ -219,7 +219,7 @@ export async function updateAsset(
     })
     if (existing) {
       return {
-        error: `Výrobné číslo „${serialNumber}" je už evidované (ID: ${existing.id} – ${existing.name}).`,
+        error: `Výrobné číslo „${serialNumber}" je už evidované.`,
       }
     }
   }

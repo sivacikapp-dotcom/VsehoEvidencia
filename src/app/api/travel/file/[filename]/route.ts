@@ -40,30 +40,43 @@ export async function GET(
     return new NextResponse("Forbidden", { status: 403 })
   }
 
-  const filePath = path.join(process.cwd(), "uploads", "travel", filename)
+  const ALLOWED_EXTENSIONS: Record<string, string> = {
+    ".pdf": "application/pdf",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".txt": "text/plain",
+    ".csv": "text/csv",
+  }
+
+  const ext = path.extname(filename).toLowerCase()
+  if (!ALLOWED_EXTENSIONS[ext]) {
+    return new NextResponse("Nepodporovaný formát súboru", { status: 415 })
+  }
+
+  // Path traversal ochrana cez path.resolve
+  const uploadsRoot = path.resolve(process.cwd(), "uploads", "travel")
+  const filePath = path.resolve(uploadsRoot, filename)
+  if (!filePath.startsWith(uploadsRoot + path.sep)) {
+    return new NextResponse("Invalid filename", { status: 400 })
+  }
+
   try {
     const buffer = await readFile(filePath)
-    const ext = path.extname(filename).toLowerCase()
-    const mimeMap: Record<string, string> = {
-      ".pdf": "application/pdf",
-      ".doc": "application/msword",
-      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ".xls": "application/vnd.ms-excel",
-      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      ".png": "image/png",
-      ".jpg": "image/jpeg",
-      ".jpeg": "image/jpeg",
-      ".gif": "image/gif",
-      ".txt": "text/plain",
-      ".csv": "text/csv",
-    }
-    const contentType = mimeMap[ext] ?? "application/octet-stream"
-    const originalName = req.nextUrl.searchParams.get("name") ?? attachment.originalName
+    const rawName = req.nextUrl.searchParams.get("name") ?? attachment.originalName
+    const originalName = rawName.replace(/[^\w.\-\s]/g, "_")
+    const contentType = ALLOWED_EXTENSIONS[ext]
 
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": contentType,
-        "Content-Disposition": `inline; filename="${encodeURIComponent(originalName)}"`,
+        "Content-Disposition": `attachment; filename="${encodeURIComponent(originalName)}"`,
+        "X-Content-Type-Options": "nosniff",
       },
     })
   } catch {

@@ -51,8 +51,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Súbor je prázdny." }, { status: 400 })
   }
 
+  const ALLOWED_EXTENSIONS = new Set([
+    "pdf", "doc", "docx", "xls", "xlsx", "png", "jpg", "jpeg", "txt",
+  ])
   const nameParts = file.name.split(".")
-  const ext = nameParts.length > 1 ? nameParts.pop()! : "bin"
+  const ext = (nameParts.length > 1 ? nameParts.pop()! : "bin").toLowerCase()
+  if (!ALLOWED_EXTENSIONS.has(ext)) {
+    return NextResponse.json(
+      { error: "Nepodporovaný formát súboru. Povolené: pdf, doc, docx, xls, xlsx, png, jpg, jpeg, txt." },
+      { status: 415 }
+    )
+  }
   const storedName = `${crypto.randomUUID()}.${ext}`
   const uploadDir = join(process.cwd(), "uploads", "assets")
 

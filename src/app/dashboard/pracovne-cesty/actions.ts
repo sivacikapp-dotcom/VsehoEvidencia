@@ -598,7 +598,9 @@ export async function uploadExpenseReportAttachment(formData: FormData) {
   if (!report) throw new Error("Najprv uložte vyúčtovanie.")
   if (report.status !== "DRAFT") throw new Error("Prílohy možno pridávať len k rozpracovanému vyúčtovaniu.")
 
-  const ext = path.extname(file.name)
+  const TRAVEL_ALLOWED_EXT = new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".gif", ".txt", ".csv"])
+  const ext = path.extname(file.name).toLowerCase()
+  if (!TRAVEL_ALLOWED_EXT.has(ext)) throw new Error("Nepodporovaný formát súboru.")
   const storedName = `${randomUUID()}${ext}`
   const uploadDir = path.join(process.cwd(), "uploads", "travel")
   await mkdir(uploadDir, { recursive: true })

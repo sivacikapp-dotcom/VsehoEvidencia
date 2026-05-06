@@ -6,6 +6,7 @@ import { prisma } from "./prisma"
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
+    maxAge: 8 * 60 * 60, // 8 hodín
   },
   providers: [
     CredentialsProvider({
@@ -18,12 +19,11 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) return null
 
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email: credentials.email.trim().toLowerCase() },
         })
         if (!user) return null
 
-        // TODO: obnoviť bcrypt overenie po testovaní
-        const valid = credentials.password === "test" || await bcrypt.compare(credentials.password, user.password)
+        const valid = await bcrypt.compare(credentials.password, user.password)
         if (!valid) return null
 
         return {
