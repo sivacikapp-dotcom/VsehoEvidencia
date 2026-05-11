@@ -15,10 +15,16 @@ export default async function UserCardPage({
   const roles = session.user.roles
   const isManager = roles.includes("SPRAVCA_KARIET")
   const isSupervisorRole = roles.includes("NADRIADENY")
+  const canViewAll =
+    roles.includes("SPRAVCA_ROLI") ||
+    roles.includes("SPRAVCA_APLIKACIE") ||
+    roles.includes("SPRAVCA_KARIET") ||
+    roles.includes("SPRAVCA_PC") ||
+    roles.includes("BEZPECNOSTNY_PRACOVNIK")
   const sessionUserId = parseInt(session.user.id)
 
-  // Access control: manager can see all; supervisor can only see their subordinates
-  if (!isManager && !isSupervisorRole) redirect("/dashboard")
+  // Access control: privileged roles see all; supervisor sees subordinates only
+  if (!canViewAll && !isSupervisorRole) redirect("/dashboard")
 
   const { id } = await params
   const userId = parseInt(id)
@@ -63,7 +69,7 @@ export default async function UserCardPage({
   if (!user) notFound()
 
   // Supervisor access check: can only view own subordinates
-  if (!isManager && isSupervisorRole && user.supervisorId !== sessionUserId) {
+  if (!canViewAll && isSupervisorRole && user.supervisorId !== sessionUserId) {
     redirect("/dashboard")
   }
 
@@ -107,7 +113,7 @@ export default async function UserCardPage({
       viewerUserId={parseInt(session.user.id)}
       viewerName={session.user.name}
       isManager={isManager}
-      backUrl={isManager ? "/dashboard/users" : "/dashboard/my-card"}
+      backUrl={canViewAll ? "/dashboard/users" : "/dashboard/my-card"}
     />
   )
 }

@@ -6,7 +6,8 @@ import { prisma } from "./prisma"
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
-    maxAge: 8 * 60 * 60, // 8 hodín
+    maxAge: 2 * 60 * 60,  // 2 hodiny
+    updateAge: 5 * 60,    // obnoviť token pri aktivite (každých 5 min)
   },
   providers: [
     CredentialsProvider({

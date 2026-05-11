@@ -44,10 +44,12 @@ export default async function AgendaPage({
 
   if (!agenda) notFound()
 
+  const roles = (session.user as { roles?: string[] }).roles ?? []
   const isAdmin = userDoc?.docRole === "SPRAVCA_DOKUMENTOV"
   const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === agendaId) ?? false
-  const docGestorIds = new Set(userDoc?.documentGestors.map((g) => g.documentId) ?? [])
-  const accessIds = new Set(userDoc?.documentAccesses.map((g) => g.documentId) ?? [])
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isAdmin && !isAgendaGestor
+  const docGestorIds = new Set(!isAppAdmin ? (userDoc?.documentGestors.map((g) => g.documentId) ?? []) : [])
+  const accessIds = new Set(!isAppAdmin ? (userDoc?.documentAccesses.map((g) => g.documentId) ?? []) : [])
 
   const rawDocs = await prisma.document.findMany({
     where: { agendaId, isLatest: true },
@@ -59,6 +61,8 @@ export default async function AgendaPage({
 
   const documents = rawDocs
     .filter((doc) => {
+      // SPRAVCA_APLIKACIE vidí všetky dokumenty
+      if (isAppAdmin) return true
       if (doc.confidentiality === "VEREJNY") return true
       if (doc.confidentiality === "INTERNI") return true // all logged-in users
       // DOVERNI: admin, agenda gestor, doc gestor, or explicit access
@@ -66,15 +70,15 @@ export default async function AgendaPage({
     })
     .map((doc) => ({
       id: doc.id,
-      znacka: doc.znacka,
+      znacka: isAppAdmin ? "••••••" : doc.znacka,
       nazov: doc.nazov,
-      datumSchvalenia: doc.datumSchvalenia.toISOString().split("T")[0],
-      confidentiality: doc.confidentiality,
-      prilohaName: doc.prilohaName,
+      datumSchvalenia: isAppAdmin ? "••••••" : doc.datumSchvalenia.toISOString().split("T")[0],
+      confidentiality: isAppAdmin ? ("VEREJNY" as typeof doc.confidentiality) : doc.confidentiality,
+      prilohaName: isAppAdmin ? null : doc.prilohaName,
       version: doc.version,
-      canEdit: isAdmin || isAgendaGestor || docGestorIds.has(doc.id),
-      canDelete: isAdmin || isAgendaGestor,
-      gestors: doc.gestors.map((g) => ({
+      canEdit: false,
+      canDelete: false,
+      gestors: isAppAdmin ? [] : doc.gestors.map((g) => ({
         id: g.user.id,
         name: `${g.user.firstName} ${g.user.lastName}`,
       })),
@@ -84,8 +88,9 @@ export default async function AgendaPage({
     <DocumentsClient
       agenda={{ id: agenda.id, name: agenda.name }}
       documents={documents}
-      canCreate={isAdmin || isAgendaGestor}
+      canCreate={false}
       isAdmin={isAdmin}
+      isAppAdmin={isAppAdmin}
       allUsers={allUsers.map((u) => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`,

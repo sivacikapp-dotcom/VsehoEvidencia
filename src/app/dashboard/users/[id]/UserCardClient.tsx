@@ -18,6 +18,8 @@ const roleBadge: Record<Role, string> = {
   BEZPECNOSTNY_PRACOVNIK: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
   SPRAVCA_KARIET: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
   SPRAVCA_PC: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
+  SPRAVCA_ROLI: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+  SPRAVCA_APLIKACIE: "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
 }
 const roleLabel: Record<Role, string> = {
   PRIJEMCA: "Príjemca",
@@ -25,6 +27,8 @@ const roleLabel: Record<Role, string> = {
   BEZPECNOSTNY_PRACOVNIK: "Bezp. pracovník",
   SPRAVCA_KARIET: "Správca kariet",
   SPRAVCA_PC: "Správca PC",
+  SPRAVCA_ROLI: "Správca rolí",
+  SPRAVCA_APLIKACIE: "Správca aplikácie",
 }
 
 type Assignment = {

@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect, notFound } from "next/navigation"
 import AssetDetailClient from "./AssetDetailClient"
+import type { Role, AttachmentVisibility } from "@/generated/prisma/enums"
+import { HIDDEN } from "@/lib/appAdmin"
 
 export default async function AssetDetailPage({
   params,
@@ -15,7 +17,8 @@ export default async function AssetDetailPage({
   const roles = session.user.roles
   const isManager = roles.includes("SPRAVCA_KARIET")
   const isSecurityWorker = roles.includes("BEZPECNOSTNY_PRACOVNIK")
-  const backHref = isManager || isSecurityWorker ? "/dashboard/assets" : "/dashboard/my-assets"
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isManager && !isSecurityWorker
+  const backHref = isManager || isSecurityWorker || isAppAdmin ? "/dashboard/assets" : "/dashboard/my-assets"
 
   const { id } = await params
   const assetId = parseInt(id)
@@ -43,37 +46,63 @@ export default async function AssetDetailPage({
 
   if (!asset) notFound()
 
+  const userRoles = session.user.roles as Role[]
+  const allAttachments = await prisma.assetAttachment.findMany({
+    where: { assetId },
+    orderBy: { createdAt: "desc" },
+  })
+  const attachments = allAttachments
+    .filter((a) => {
+      const vis = a.visibility as AttachmentVisibility
+      if (vis === "Everyone") return true
+      if (vis === "ManagersAndSecurity") return isManager || isSecurityWorker
+      if (vis === "OwnRoleOnly") return (a.uploaderRoles as Role[]).some((r) => userRoles.includes(r))
+      return false
+    })
+    .map((a) => ({
+      id: a.id,
+      originalName: a.originalName,
+      storedName: a.storedName,
+      size: a.size,
+      visibility: a.visibility as AttachmentVisibility,
+      uploaderRoles: a.uploaderRoles as string[],
+      uploaderName: a.uploaderName,
+      createdAt: a.createdAt.toISOString().split("T")[0],
+    }))
+
+  const H = HIDDEN
   return (
     <AssetDetailClient
       backHref={backHref}
       asset={{
         id: asset.id,
-        type: asset.type,
-        name: asset.name,
-        brand: asset.brand,
-        serialNumber: asset.serialNumber,
-        usagePlace: asset.usagePlace,
-        yearOfManufacture: asset.yearOfManufacture,
-        allocationStatus: asset.allocationStatus,
-        functionStatus: asset.functionStatus,
-        kind: asset.kind,
-        acquisitionDate: asset.acquisitionDate ? asset.acquisitionDate.toISOString().split("T")[0] : null,
-        publicNote: asset.publicNote,
-        recordNote: isManager ? asset.recordNote : null,
-        securityNote: isSecurityWorker ? asset.securityNote : null,
-        isSecurity: asset.isSecurity,
+        version: asset.version,
+        type: isAppAdmin ? (H as typeof asset.type) : asset.type,
+        name: isAppAdmin ? H : asset.name,
+        brand: isAppAdmin ? (H as typeof asset.brand) : asset.brand,
+        serialNumber: isAppAdmin ? H : asset.serialNumber,
+        usagePlace: isAppAdmin ? (H as typeof asset.usagePlace) : asset.usagePlace,
+        yearOfManufacture: isAppAdmin ? null : asset.yearOfManufacture,
+        allocationStatus: isAppAdmin ? (H as typeof asset.allocationStatus) : asset.allocationStatus,
+        functionStatus: isAppAdmin ? (H as typeof asset.functionStatus) : asset.functionStatus,
+        kind: isAppAdmin ? (H as typeof asset.kind) : asset.kind,
+        acquisitionDate: isAppAdmin ? null : (asset.acquisitionDate ? asset.acquisitionDate.toISOString().split("T")[0] : null),
+        publicNote: isAppAdmin ? null : asset.publicNote,
+        recordNote: !isAppAdmin && isManager ? asset.recordNote : null,
+        securityNote: !isAppAdmin && isSecurityWorker ? asset.securityNote : null,
+        isSecurity: isAppAdmin ? false : asset.isSecurity,
         createdAt: asset.createdAt.toISOString().split("T")[0],
-        bpVDomene: isSecurityWorker ? asset.bpVDomene : null,
-        bpNazovVDomene: isSecurityWorker ? asset.bpNazovVDomene : null,
-        bpAktualizovanyDna: isSecurityWorker && asset.bpAktualizovanyDna ? asset.bpAktualizovanyDna.toISOString().split("T")[0] : null,
-        bpEset: isSecurityWorker ? asset.bpEset : null,
-        bpImei1: isSecurityWorker ? asset.bpImei1 : null,
-        bpImei2: isSecurityWorker ? asset.bpImei2 : null,
-        bpPodporovanyDo: isSecurityWorker && asset.bpPodporovanyDo ? asset.bpPodporovanyDo.toISOString().split("T")[0] : null,
-        bpTelefonneCislo: isSecurityWorker ? asset.bpTelefonneCislo : null,
-        bpPovolenyVDomene: isSecurityWorker ? asset.bpPovolenyVDomene : null,
+        bpVDomene: null,
+        bpNazovVDomene: null,
+        bpAktualizovanyDna: null,
+        bpEset: null,
+        bpImei1: !isAppAdmin && isSecurityWorker ? asset.bpImei1 : null,
+        bpImei2: !isAppAdmin && isSecurityWorker ? asset.bpImei2 : null,
+        bpPodporovanyDo: null,
+        bpTelefonneCislo: null,
+        bpPovolenyVDomene: null,
       }}
-      recipientHistory={asset.recipientAssignments.map((a) => ({
+      recipientHistory={isAppAdmin ? [] : asset.recipientAssignments.map((a) => ({
         id: a.id,
         userName: `${a.user.lastName} ${a.user.firstName}`,
         userEmail: a.user.email,
@@ -85,7 +114,7 @@ export default async function AssetDetailPage({
         returnNote: a.returnNote,
         isCurrent: !a.returnedAt,
       }))}
-      roomHistory={asset.roomAssignments.map((a) => ({
+      roomHistory={isAppAdmin ? [] : asset.roomAssignments.map((a) => ({
         id: a.id,
         roomName: a.room.name,
         assignedAt: a.assignedAt.toISOString().split("T")[0],
@@ -96,9 +125,11 @@ export default async function AssetDetailPage({
         removalNote: a.removalNote,
         isCurrent: !a.removedAt,
       }))}
-      isManager={isManager}
-      isSecurityWorker={isSecurityWorker}
+      isManager={!isAppAdmin && isManager}
+      isSecurityWorker={!isAppAdmin && isSecurityWorker}
+      isAppAdmin={isAppAdmin}
       userId={parseInt(session.user.id)}
+      attachments={isAppAdmin ? [] : attachments}
     />
   )
 }

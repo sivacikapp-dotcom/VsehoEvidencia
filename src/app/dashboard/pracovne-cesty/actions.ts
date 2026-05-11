@@ -8,6 +8,7 @@ import type { TravelOrderType, TransportMeans, VehicleCategory } from "@/generat
 import { randomUUID } from "crypto"
 import { mkdir, writeFile, unlink } from "fs/promises"
 import path from "path"
+import { createAuditLog } from "@/lib/auditLog"
 import {
   notifyTravelOrderSubmitted,
   notifyTravelOrderForManager,
@@ -21,10 +22,14 @@ import {
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-async function getSession() {
+async function getSession(opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
-  return session.user as { id: string; name: string; roles: string[] }
+  const user = session.user as { id: string; name: string; roles: string[] }
+  if (opts.mutation && user.roles.includes("SPRAVCA_APLIKACIE")) {
+    throw new Error("Rola Správca aplikácie nemá oprávnenie na úpravy.")
+  }
+  return user
 }
 
 function uid(user: { id: string }) {
@@ -87,7 +92,7 @@ function validateTravelOrderInput(data: Omit<CreateTravelOrderInput, "type">) {
 }
 
 export async function createTravelOrder(data: CreateTravelOrderInput) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   validateTravelOrderInput(data)
   const orderNumber = await generateOrderNumber(data.type)
@@ -117,6 +122,12 @@ export async function createTravelOrder(data: CreateTravelOrderInput) {
     },
   })
 
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "CREATE", entityType: "TRAVEL_ORDER", entityId: created.id,
+    entityLabel: created.orderNumber,
+    newData: { orderNumber: created.orderNumber, type: created.type, purpose: created.purpose, status: "DRAFT" },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   return { id: created.id }
 }
@@ -127,7 +138,7 @@ export async function updateTravelOrder(
   id: number,
   data: Omit<CreateTravelOrderInput, "type">
 ) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   validateTravelOrderInput(data)
 
@@ -158,6 +169,12 @@ export async function updateTravelOrder(
     },
   })
 
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { purpose: order.purpose, destination: order.destination, status: order.status },
+    newData: { purpose: data.purpose, destination: data.destination, status: "DRAFT" },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
@@ -165,7 +182,7 @@ export async function updateTravelOrder(
 // ─── delete travel order (DRAFT only) ─────────────────────────────────────────
 
 export async function deleteTravelOrder(id: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({ where: { id } })
   if (!order) throw new Error("Príkaz neexistuje.")
@@ -173,13 +190,18 @@ export async function deleteTravelOrder(id: number) {
   if (order.status !== "DRAFT") throw new Error("Príkaz nie je v stave Rozpracovaný.")
 
   await prisma.travelOrder.delete({ where: { id } })
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "DELETE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { orderNumber: order.orderNumber, type: order.type, purpose: order.purpose, status: order.status },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
 }
 
 // ─── submit for supervisor approval ───────────────────────────────────────────
 
 export async function submitTravelOrder(id: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({
     where: { id },
@@ -201,7 +223,11 @@ export async function submitTravelOrder(id: number) {
     `${order.user.firstName} ${order.user.lastName}`,
     order.supervisorId
   )
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "DRAFT" }, newData: { status: "PENDING_SUPERVISOR" },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
@@ -209,7 +235,7 @@ export async function submitTravelOrder(id: number) {
 // ─── supervisor approve ────────────────────────────────────────────────────────
 
 export async function supervisorApproveTravelOrder(id: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({
     where: { id },
@@ -235,7 +261,11 @@ export async function supervisorApproveTravelOrder(id: number) {
     `${order.user.firstName} ${order.user.lastName}`,
     uid(user)
   )
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "PENDING_MANAGER" },
+  })
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
@@ -244,7 +274,7 @@ export async function supervisorApproveTravelOrder(id: number) {
 // ─── supervisor reject ─────────────────────────────────────────────────────────
 
 export async function supervisorRejectTravelOrder(id: number, note: string) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({
     where: { id },
@@ -265,7 +295,11 @@ export async function supervisorRejectTravelOrder(id: number, note: string) {
 
   await dismissPendingNotification(uid(user), id, "TRAVEL_ORDER_SUBMITTED")
   await notifyTravelOrderRejected(id, order.orderNumber, order.user.id, user.name, note)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "REJECTED", rejectionNote: note },
+  })
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
@@ -274,7 +308,7 @@ export async function supervisorRejectTravelOrder(id: number, note: string) {
 // ─── manager (SPRAVCA_PC) approve ─────────────────────────────────────────────
 
 export async function managerApproveTravelOrder(id: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
 
@@ -296,7 +330,11 @@ export async function managerApproveTravelOrder(id: number) {
   })
 
   await notifyTravelOrderApproved(id, order.orderNumber, order.user.id)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_MANAGER" }, newData: { status: "APPROVED" },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
@@ -304,7 +342,7 @@ export async function managerApproveTravelOrder(id: number) {
 // ─── manager reject ────────────────────────────────────────────────────────────
 
 export async function managerRejectTravelOrder(id: number, note: string) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
 
@@ -326,7 +364,11 @@ export async function managerRejectTravelOrder(id: number, note: string) {
   })
 
   await notifyTravelOrderRejected(id, order.orderNumber, order.user.id, user.name, note)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_MANAGER" }, newData: { status: "REJECTED", rejectionNote: note },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
@@ -334,7 +376,7 @@ export async function managerRejectTravelOrder(id: number, note: string) {
 // ─── reopen rejected order (back to DRAFT) ────────────────────────────────────
 
 export async function reopenTravelOrder(id: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({ where: { id } })
   if (!order) throw new Error("Príkaz neexistuje.")
@@ -352,7 +394,11 @@ export async function reopenTravelOrder(id: number) {
       rejectionNote: null,
     },
   })
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
+    oldData: { status: "REJECTED" }, newData: { status: "DRAFT" },
+  })
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
@@ -397,7 +443,7 @@ export type UpsertExpenseReportInput = {
 }
 
 export async function upsertExpenseReport(data: UpsertExpenseReportInput) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({
     where: { id: data.travelOrderId },
@@ -435,12 +481,25 @@ export async function upsertExpenseReport(data: UpsertExpenseReportInput) {
     advanceReceived: data.advanceReceived,
   }
 
+  const existingReport = await prisma.travelExpenseReport.findUnique({
+    where: { travelOrderId: data.travelOrderId },
+    select: { totalExpenses: true, advanceReceived: true, status: true },
+  })
+
   await prisma.travelExpenseReport.upsert({
     where: { travelOrderId: data.travelOrderId },
     create: { travelOrderId: data.travelOrderId, ...payload },
     update: payload,
   })
 
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: existingReport ? "UPDATE" : "CREATE",
+    entityType: "EXPENSE_REPORT", entityId: data.travelOrderId,
+    entityLabel: order.orderNumber,
+    oldData: existingReport ? { totalExpenses: existingReport.totalExpenses, advanceReceived: existingReport.advanceReceived } : null,
+    newData: { totalExpenses: data.totalExpenses, advanceReceived: data.advanceReceived },
+  })
   revalidatePath(`/dashboard/pracovne-cesty/${data.travelOrderId}`)
 }
 
@@ -453,7 +512,7 @@ async function getReport(travelOrderId: number) {
 }
 
 export async function submitExpenseReport(travelOrderId: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   const order = await prisma.travelOrder.findUnique({
     where: { id: travelOrderId },
     include: { user: { select: { firstName: true, lastName: true } } },
@@ -477,12 +536,16 @@ export async function submitExpenseReport(travelOrderId: number) {
     `${order.user.firstName} ${order.user.lastName}`,
     order.supervisorId
   )
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
+    oldData: { status: "DRAFT" }, newData: { status: "PENDING_SUPERVISOR" },
+  })
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
 
 export async function supervisorApproveExpenseReport(travelOrderId: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   const order = await prisma.travelOrder.findUnique({
     where: { id: travelOrderId },
     include: { user: { select: { firstName: true, lastName: true } } },
@@ -505,13 +568,17 @@ export async function supervisorApproveExpenseReport(travelOrderId: number) {
     `${order.user.firstName} ${order.user.lastName}`,
     uid(user)
   )
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "PENDING_MANAGER" },
+  })
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
 
 export async function supervisorRejectExpenseReport(travelOrderId: number, note: string) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   const order = await prisma.travelOrder.findUnique({
     where: { id: travelOrderId },
     include: { user: { select: { id: true } } },
@@ -529,13 +596,17 @@ export async function supervisorRejectExpenseReport(travelOrderId: number, note:
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_SUBMITTED")
   await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "DRAFT", rejectionNote: note },
+  })
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
 
 export async function managerApproveExpenseReport(travelOrderId: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
@@ -559,13 +630,17 @@ export async function managerApproveExpenseReport(travelOrderId: number) {
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_FOR_MANAGER")
   await notifyExpenseReportApproved(travelOrderId, order.orderNumber, order.user.id)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_MANAGER" }, newData: { status: "APPROVED" },
+  })
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
 
 export async function managerRejectExpenseReport(travelOrderId: number, note: string) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
@@ -589,7 +664,11 @@ export async function managerRejectExpenseReport(travelOrderId: number, note: st
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_FOR_MANAGER")
   await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note)
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
+    oldData: { status: "PENDING_MANAGER" }, newData: { status: "DRAFT", rejectionNote: note },
+  })
   revalidatePath("/dashboard")
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
@@ -597,7 +676,7 @@ export async function managerRejectExpenseReport(travelOrderId: number, note: st
 // ─── expense report attachments ────────────────────────────────────────────────
 
 export async function uploadExpenseReportAttachment(formData: FormData) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
   const travelOrderId = parseInt(formData.get("travelOrderId") as string)
   const file = formData.get("file") as File | null
 
@@ -620,7 +699,7 @@ export async function uploadExpenseReportAttachment(formData: FormData) {
   await mkdir(uploadDir, { recursive: true })
   await writeFile(path.join(uploadDir, storedName), Buffer.from(await file.arrayBuffer()))
 
-  await prisma.expenseReportAttachment.create({
+  const created = await prisma.expenseReportAttachment.create({
     data: {
       expenseReportId: report.id,
       storedName,
@@ -630,12 +709,17 @@ export async function uploadExpenseReportAttachment(formData: FormData) {
       uploadedById: uid(user),
     },
   })
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "CREATE", entityType: "EXPENSE_REPORT_ATTACHMENT", entityId: created.id,
+    entityLabel: file.name,
+    newData: { originalName: file.name, travelOrderId },
+  })
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }
 
 export async function deleteExpenseReportAttachment(attachmentId: number, travelOrderId: number) {
-  const user = await getSession()
+  const user = await getSession({ mutation: true })
 
   const order = await prisma.travelOrder.findUnique({ where: { id: travelOrderId } })
   if (!order) throw new Error("Príkaz neexistuje.")
@@ -650,6 +734,11 @@ export async function deleteExpenseReportAttachment(attachmentId: number, travel
 
   await unlink(path.join(process.cwd(), "uploads", "travel", attachment.storedName)).catch(() => {})
   await prisma.expenseReportAttachment.delete({ where: { id: attachmentId } })
-
+  await createAuditLog({
+    userId: uid(user), userEmail: null, userName: user.name,
+    action: "DELETE", entityType: "EXPENSE_REPORT_ATTACHMENT", entityId: attachmentId,
+    entityLabel: attachment.originalName,
+    oldData: { originalName: attachment.originalName, travelOrderId },
+  })
   revalidatePath(`/dashboard/pracovne-cesty/${travelOrderId}`)
 }

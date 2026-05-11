@@ -2,9 +2,9 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Loader2, Pencil, ExternalLink } from "lucide-react"
+import { Plus, X, Loader2, Pencil, ExternalLink, Trash2 } from "lucide-react"
 import Link from "next/link"
-import { createUser, updateUser } from "./actions"
+import { createUser, updateUser, deleteUser } from "./actions"
 import type { Role } from "@/generated/prisma/enums"
 
 const ALL_ROLES: { value: Role; label: string }[] = [
@@ -13,6 +13,8 @@ const ALL_ROLES: { value: Role; label: string }[] = [
   { value: "BEZPECNOSTNY_PRACOVNIK", label: "Bezpečnostný pracovník" },
   { value: "SPRAVCA_KARIET", label: "Správca kariet" },
   { value: "SPRAVCA_PC", label: "Správca pracovných ciest" },
+  { value: "SPRAVCA_ROLI", label: "Správca rolí" },
+  { value: "SPRAVCA_APLIKACIE", label: "Správca aplikácie" },
 ]
 
 const roleBadge: Record<Role, string> = {
@@ -21,6 +23,8 @@ const roleBadge: Record<Role, string> = {
   BEZPECNOSTNY_PRACOVNIK: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
   SPRAVCA_KARIET: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
   SPRAVCA_PC: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
+  SPRAVCA_ROLI: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+  SPRAVCA_APLIKACIE: "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
 }
 
 const roleLabel: Record<Role, string> = {
@@ -29,6 +33,8 @@ const roleLabel: Record<Role, string> = {
   BEZPECNOSTNY_PRACOVNIK: "BP",
   SPRAVCA_KARIET: "Správca",
   SPRAVCA_PC: "Správca PC",
+  SPRAVCA_ROLI: "Správca rolí",
+  SPRAVCA_APLIKACIE: "Spr. aplikácie",
 }
 
 type User = {
@@ -45,13 +51,14 @@ type User = {
 const inputCls =
   "w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, hint, children }: { label: string; required?: boolean; hint?: string; children: React.ReactNode }) {
   return (
     <div>
       <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
         {label}{required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
     </div>
   )
 }
@@ -127,11 +134,11 @@ function NewUserModal({ users, onClose }: { users: User[]; onClose: () => void }
                 <input type="text" name="lastName" required className={inputCls} />
               </Field>
             </div>
-            <Field label="Email" required>
-              <input type="email" name="email" required className={inputCls} placeholder="meno@firma.sk" />
+            <Field label="Email" required hint="Platná e-mailová adresa (napr. meno@firma.sk)">
+              <input type="email" name="email" required className={inputCls} placeholder="meno@firma.sk" autoComplete="off" />
             </Field>
-            <Field label="Heslo (počiatočné)" required>
-              <input type="password" name="password" required minLength={6} className={inputCls} placeholder="min. 6 znakov" />
+            <Field label="Heslo (počiatočné)" required hint="Min. 10 znakov, aspoň 1 veľké, 1 malé písmeno a 1 číslica.">
+              <input type="password" name="password" required minLength={10} className={inputCls} autoComplete="new-password" />
             </Field>
             <Field label="Role" required>
               <RoleCheckboxes selected={roles} onChange={setRoles} />
@@ -235,9 +242,20 @@ function EditUserModal({ user, allUsers, onClose }: { user: User; allUsers: User
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────
-export default function UsersClient({ users }: { users: User[] }) {
+export default function UsersClient({ users, canManage = false }: { users: User[]; canManage?: boolean }) {
+  const router = useRouter()
   const [showNew, setShowNew] = useState(false)
   const [editUser, setEditUser] = useState<User | null>(null)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+
+  async function handleDelete(u: User) {
+    if (!confirm(`Naozaj chcete zmazať používateľa ${u.lastName} ${u.firstName}?`)) return
+    setDeletingId(u.id)
+    const res = await deleteUser(u.id)
+    setDeletingId(null)
+    if (res.error) alert(res.error)
+    else router.refresh()
+  }
 
   return (
     <div>
@@ -246,10 +264,16 @@ export default function UsersClient({ users }: { users: User[] }) {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Používatelia</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{users.length} používateľov</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-          <Plus size={15} />
-          Nový používateľ
-        </button>
+        {canManage ? (
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+            <Plus size={15} />
+            Nový používateľ
+          </button>
+        ) : (
+          <span className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            Len na čítanie
+          </span>
+        )}
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -290,10 +314,22 @@ export default function UsersClient({ users }: { users: User[] }) {
                       <ExternalLink size={11} />
                       Karta
                     </Link>
-                    <button onClick={() => setEditUser(u)} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md font-medium">
-                      <Pencil size={11} />
-                      Upraviť
-                    </button>
+                    {canManage && (
+                      <>
+                        <button onClick={() => setEditUser(u)} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md font-medium">
+                          <Pencil size={11} />
+                          Upraviť
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u)}
+                          disabled={deletingId === u.id}
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md font-medium disabled:opacity-50"
+                        >
+                          {deletingId === u.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                          Zmazať
+                        </button>
+                      </>
+                    )}
                   </div>
                 </td>
               </tr>

@@ -31,8 +31,11 @@ export default async function DokumentyPage() {
     }),
   ])
 
+  const roles = (session.user as { roles?: string[] }).roles ?? []
   const isAdmin = userDoc?.docRole === "SPRAVCA_DOKUMENTOV"
   const managedAgendaIds = new Set(userDoc?.agendaGestors.map((g) => g.agendaId) ?? [])
+  const isAgendaGestor = managedAgendaIds.size > 0
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isAdmin && !isAgendaGestor
 
   return (
     <AgendasClient
@@ -47,6 +50,7 @@ export default async function DokumentyPage() {
         isMyAgenda: managedAgendaIds.has(a.id),
       }))}
       isAdmin={isAdmin}
+      isAppAdmin={isAppAdmin}
       allUsers={allUsers.map((u) => ({
         id: u.id,
         name: `${u.firstName} ${u.lastName}`,

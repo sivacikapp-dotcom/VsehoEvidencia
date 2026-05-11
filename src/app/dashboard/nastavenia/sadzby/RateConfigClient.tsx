@@ -25,6 +25,7 @@ type RateConfigRow = {
 interface Props {
   configs: RateConfigRow[]
   defaultRates: TravelRates
+  isAppAdmin?: boolean
 }
 
 function todayStr() {
@@ -136,7 +137,7 @@ function RatesDisplay({ c }: { c: RateConfigRow }) {
   )
 }
 
-export default function RateConfigClient({ configs, defaultRates }: Props) {
+export default function RateConfigClient({ configs, defaultRates, isAppAdmin = false }: Props) {
   const today = todayStr()
 
   // Find the active config (latest with validFrom <= today)
@@ -246,17 +247,23 @@ export default function RateConfigClient({ configs, defaultRates }: Props) {
             Sadzby diét a náhrad za km podľa zák. 283/2002 Z.z.
           </p>
         </div>
-        <button
-          onClick={() => { setShowForm(v => !v); if (!showForm) resetForm() }}
-          className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-        >
-          {showForm ? <ChevronUp size={15} /> : <Plus size={15} />}
-          {showForm ? "Zatvoriť formulár" : "Pridať nové sadzby"}
-        </button>
+        {isAppAdmin ? (
+          <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+            Režim len na čítanie
+          </span>
+        ) : (
+          <button
+            onClick={() => { setShowForm(v => !v); if (!showForm) resetForm() }}
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            {showForm ? <ChevronUp size={15} /> : <Plus size={15} />}
+            {showForm ? "Zatvoriť formulár" : "Pridať nové sadzby"}
+          </button>
+        )}
       </div>
 
       {/* Add form */}
-      {showForm && (
+      {showForm && !isAppAdmin && (
         <div className="bg-white dark:bg-gray-900 border border-blue-200 dark:border-blue-800 rounded-xl p-5 space-y-5">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Nové sadzby</h2>
           <form onSubmit={handleSubmit} className="space-y-5">
@@ -284,6 +291,7 @@ export default function RateConfigClient({ configs, defaultRates }: Props) {
                 <RateField label="Sadzba 2 (12–18 h)" value={diet12to18} onChange={setDiet12to18} step={0.01} unit="€" />
                 <RateField label="Sadzba 3 (nad 18 h)" value={dietOver18} onChange={setDietOver18} step={0.01} unit="€" />
               </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Sadzby musia byť vzostupné: 5–12 h &lt; 12–18 h &lt; nad 18 h.</p>
             </div>
 
             {/* Odpočty za stravu */}
@@ -296,6 +304,7 @@ export default function RateConfigClient({ configs, defaultRates }: Props) {
                 <RateField label="Obed" value={lunchPct} onChange={setLunchPct} step={1} unit="%" />
                 <RateField label="Večera" value={dinnerPct} onChange={setDinnerPct} step={1} unit="%" />
               </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Súčet % za všetky jedlá nesmie presiahnuť 100 %.</p>
             </div>
 
             {/* Náhrada za km */}
@@ -423,7 +432,7 @@ export default function RateConfigClient({ configs, defaultRates }: Props) {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {(isFuture || configs.length > 1) && (
+                        {!isAppAdmin && (isFuture || configs.length > 1) && (
                           <button
                             onClick={() => handleDelete(c.id)}
                             disabled={deletingId === c.id || active}

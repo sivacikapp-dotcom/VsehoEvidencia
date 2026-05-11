@@ -87,6 +87,8 @@ enum Role {
   BEZPECNOSTNY_PRACOVNIK
   SPRAVCA_KARIET
   SPRAVCA_PC
+  SPRAVCA_ROLI
+  SPRAVCA_APLIKACIE
 }
 
 enum TravelOrderType {
@@ -188,6 +190,7 @@ model Asset {
   // BP fields – USBKluc + ExternyDisk
   bpPovolenyVDomene  Boolean?
 
+  version   Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -546,4 +549,22 @@ model TravelExpenseReport {
 
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
+}
+
+model AuditLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?
+  userEmail   String?
+  userName    String?
+  action      String
+  entityType  String
+  entityId    String
+  entityLabel String?
+  oldData     Json?
+  newData     Json?
+  createdAt   DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt(sort: Desc)])
 }

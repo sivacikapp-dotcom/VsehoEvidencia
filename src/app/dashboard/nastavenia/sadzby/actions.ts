@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
+import { createAuditLog } from "@/lib/auditLog"
 
 export type CreateRateConfigInput = {
   validFrom: string  // "YYYY-MM-DD"
@@ -36,7 +37,7 @@ export async function createRateConfig(data: CreateRateConfigInput) {
   if (data.kmJednostopove <= 0 || data.kmOsobneDoLimit <= 0 || data.kmOsobneNadLimit <= 0)
     throw new Error("Kilometrové sadzby musia byť kladné čísla.")
 
-  await prisma.travelRateConfig.create({
+  const created = await prisma.travelRateConfig.create({
     data: {
       validFrom: new Date(data.validFrom),
       diet5to12: data.diet5to12,
@@ -52,6 +53,12 @@ export async function createRateConfig(data: CreateRateConfigInput) {
       createdById: parseInt(user.id),
     },
   })
+  await createAuditLog({
+    userId: parseInt(user.id), userEmail: null, userName: session.user.name,
+    action: "CREATE", entityType: "RATE_CONFIG", entityId: created.id,
+    entityLabel: data.validFrom,
+    newData: { validFrom: data.validFrom, diet5to12: data.diet5to12, diet12to18: data.diet12to18, dietOver18: data.dietOver18 },
+  })
   revalidatePath("/dashboard/nastavenia/sadzby")
 }
 
@@ -60,6 +67,13 @@ export async function deleteRateConfig(id: number) {
   if (!session?.user) throw new Error("Nie ste prihlásený.")
   const user = session.user as { id: string; roles: string[] }
   if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte oprávnenie.")
+  const config = await prisma.travelRateConfig.findUnique({ where: { id }, select: { validFrom: true } })
   await prisma.travelRateConfig.delete({ where: { id } })
+  await createAuditLog({
+    userId: parseInt(user.id), userEmail: null, userName: session.user.name,
+    action: "DELETE", entityType: "RATE_CONFIG", entityId: id,
+    entityLabel: config?.validFrom?.toISOString().split("T")[0] ?? null,
+    oldData: config ? { validFrom: config.validFrom } : null,
+  })
   revalidatePath("/dashboard/nastavenia/sadzby")
 }

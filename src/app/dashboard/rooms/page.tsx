@@ -7,7 +7,9 @@ import RoomsClient from "./RoomsClient"
 export default async function RoomsPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect("/login")
-  if (!session.user.roles.includes("SPRAVCA_KARIET")) redirect("/dashboard")
+  const isSpravcaKariet = session.user.roles.includes("SPRAVCA_KARIET")
+  const isAppAdmin = session.user.roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaKariet
+  if (!isSpravcaKariet && !session.user.roles.includes("SPRAVCA_APLIKACIE")) redirect("/dashboard")
 
   const [rawRooms, allUsers] = await Promise.all([
     prisma.room.findMany({
@@ -52,5 +54,5 @@ export default async function RoomsPage() {
     })),
   }))
 
-  return <RoomsClient rooms={rooms} allUsers={allUsers} userId={parseInt(session.user.id)} userName={session.user.name} />
+  return <RoomsClient rooms={rooms} allUsers={allUsers} userId={parseInt(session.user.id)} userName={session.user.name} isAppAdmin={isAppAdmin} />
 }

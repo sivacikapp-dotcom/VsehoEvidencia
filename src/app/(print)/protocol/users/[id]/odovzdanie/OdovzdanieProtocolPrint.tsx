@@ -9,6 +9,8 @@ const roleLabel: Record<Role, string> = {
   BEZPECNOSTNY_PRACOVNIK: "Bezp. pracovník",
   SPRAVCA_KARIET: "Správca kariet",
   SPRAVCA_PC: "Správca PC",
+  SPRAVCA_ROLI: "Správca rolí",
+  SPRAVCA_APLIKACIE: "Správca aplikácie",
 }
 
 interface Asset {

@@ -4,7 +4,10 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import type { AssetType, Brand, UsagePlace, AssetKind, FunctionStatus } from "@/generated/prisma/enums"
+import { unlink } from "fs/promises"
+import { join } from "path"
+import type { AssetType, Brand, UsagePlace, AssetKind, FunctionStatus, Role } from "@/generated/prisma/enums"
+import { createAuditLog } from "@/lib/auditLog"
 import { notifyAssetAssigned, notifyAssetReturned, notifyAssetChanged } from "@/lib/notificationHelpers"
 import {
   assetTypeLabels,
@@ -82,6 +85,9 @@ export async function createAsset(formData: FormData): Promise<Result> {
   const serialNumber = (formData.get("serialNumber") as string)?.trim() || null
 
   if (serialNumber) {
+    if (/\s/.test(serialNumber)) {
+      return { error: "Výrobné číslo nesmie obsahovať medzery." }
+    }
     const existing = await prisma.asset.findUnique({ where: { serialNumber } })
     if (existing) {
       return {
@@ -104,7 +110,7 @@ export async function createAsset(formData: FormData): Promise<Result> {
   }
 
   try {
-    await prisma.asset.create({
+    const created = await prisma.asset.create({
       data: {
         type: formData.get("type") as AssetType,
         name: (formData.get("name") as string).trim(),
@@ -119,6 +125,11 @@ export async function createAsset(formData: FormData): Promise<Result> {
         securityNote: null,
         isSecurity: formData.get("isSecurity") === "on",
       },
+    })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "CREATE", entityType: "ASSET", entityId: created.id, entityLabel: created.name,
+      newData: { type: created.type, name: created.name, serialNumber: created.serialNumber },
     })
     revalidatePath("/dashboard/assets")
     return { success: true }
@@ -199,6 +210,11 @@ export async function assignAsset(
       await notifyAssetChanged(assetId, asset.type, asset.name, asset.serialNumber, [parseInt(session.user.id)])
     }
 
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: asset.name,
+      newData: { allocationStatus: type === "recipient" ? "Prideleny_Recipient" : "Prideleny_Room", targetId },
+    })
     revalidatePath("/dashboard/assets")
     return { success: true }
   } catch {
@@ -218,6 +234,9 @@ export async function updateAsset(
   const serialNumber = (formData.get("serialNumber") as string)?.trim() || null
 
   if (serialNumber) {
+    if (/\s/.test(serialNumber)) {
+      return { error: "Výrobné číslo nesmie obsahovať medzery." }
+    }
     const existing = await prisma.asset.findFirst({
       where: { serialNumber, NOT: { id: assetId } },
     })
@@ -274,6 +293,12 @@ export async function updateAsset(
     const actorId = parseInt(session.user.id)
     const changes = buildAssetChangeDiff(oldAsset, updated)
     await notifyAssetChanged(assetId, updated.type, updated.name, updated.serialNumber, [actorId], changes)
+    await createAuditLog({
+      userId: actorId, userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: updated.name,
+      oldData: oldAsset as Record<string, unknown>,
+      newData: { type: updated.type, name: updated.name, brand: updated.brand, serialNumber: updated.serialNumber, usagePlace: updated.usagePlace, yearOfManufacture: updated.yearOfManufacture, kind: updated.kind, functionStatus: updated.functionStatus, publicNote: updated.publicNote, isSecurity: updated.isSecurity },
+    })
     revalidatePath(`/dashboard/assets/${assetId}`)
     revalidatePath("/dashboard/assets")
     return { success: true }
@@ -325,7 +350,11 @@ export async function returnAsset(
         notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId)
       )
     )
-
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: asset.name,
+      oldData: { allocationStatus: "Prideleny" }, newData: { allocationStatus: "Neprideleny_Volny" },
+    })
     revalidatePath("/dashboard/assets")
     revalidatePath("/dashboard/users")
     revalidatePath("/dashboard/rooms")
@@ -363,12 +392,26 @@ export async function updateBpFields(
         },
       })
     } else if (asset.type === "MobilnyTelefon") {
+      const imei1 = (formData.get("bpImei1") as string)?.trim() || null
+      const imei2 = (formData.get("bpImei2") as string)?.trim() || null
+
+      if (imei1) {
+        if (!/^\d+$/.test(imei1)) return { error: "IMEI 1 môže obsahovať iba číslice a nesmie obsahovať medzery." }
+        const existing = await prisma.asset.findFirst({ where: { bpImei1: imei1, NOT: { id: assetId } } })
+        if (existing) return { error: `IMEI 1 „${imei1}" je už evidovaný.` }
+      }
+      if (imei2) {
+        if (!/^\d+$/.test(imei2)) return { error: "IMEI 2 môže obsahovať iba číslice a nesmie obsahovať medzery." }
+        const existing = await prisma.asset.findFirst({ where: { bpImei2: imei2, NOT: { id: assetId } } })
+        if (existing) return { error: `IMEI 2 „${imei2}" je už evidovaný.` }
+      }
+
       await prisma.asset.update({
         where: { id: assetId },
         data: {
           bpEset: formData.get("bpEset") === "on",
-          bpImei1: (formData.get("bpImei1") as string)?.trim() || null,
-          bpImei2: (formData.get("bpImei2") as string)?.trim() || null,
+          bpImei1: imei1,
+          bpImei2: imei2,
           bpPodporovanyDo: parseDate("bpPodporovanyDo"),
         },
       })
@@ -390,6 +433,11 @@ export async function updateBpFields(
       return { error: "Tento typ majetku nemá BP polia." }
     }
 
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: null,
+      newData: { bpType: asset.type },
+    })
     revalidatePath(`/dashboard/assets/${assetId}`)
     return { success: true }
   } catch (e) {
@@ -412,6 +460,11 @@ export async function updateSecurityNote(
       where: { id: assetId },
       data: { securityNote: note.trim() || null },
     })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: null,
+      newData: { securityNote: note.trim() || null },
+    })
     revalidatePath(`/dashboard/assets/${assetId}`)
     revalidatePath("/dashboard/assets")
     return { success: true }
@@ -419,4 +472,79 @@ export async function updateSecurityNote(
     console.error("[updateSecurityNote]", e)
     return { error: "Nastala chyba pri ukladaní." }
   }
+}
+
+export async function updateAttachmentVisibility(
+  attachmentId: number,
+  visibility: "Everyone" | "ManagersAndSecurity" | "OwnRoleOnly",
+  visibilityRoles?: string[]
+): Promise<Result> {
+  const session = await getServerSession(authOptions)
+  if (!session) return { error: "Neautorizovaný." }
+  const roles = session.user.roles as Role[]
+  if (!roles.includes("SPRAVCA_KARIET") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
+    return { error: "Nemáte oprávnenie upravovať prílohy." }
+  }
+
+  const VALID = ["Everyone", "ManagersAndSecurity", "OwnRoleOnly"]
+  if (!VALID.includes(visibility)) return { error: "Neplatná viditeľnosť." }
+
+  const attachment = await prisma.assetAttachment.findUnique({
+    where: { id: attachmentId },
+    select: { id: true, assetId: true, uploaderRoles: true, originalName: true, visibility: true },
+  })
+  if (!attachment) return { error: "Príloha nebola nájdená." }
+
+  const ROLE_WHITELIST = ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK"]
+  let newUploaderRoles = attachment.uploaderRoles as string[]
+  if (visibility === "OwnRoleOnly" && visibilityRoles && visibilityRoles.length > 0) {
+    const filtered = visibilityRoles.filter((r) => ROLE_WHITELIST.includes(r))
+    if (filtered.length > 0) newUploaderRoles = filtered
+  }
+
+  await prisma.assetAttachment.update({
+    where: { id: attachmentId },
+    data: { visibility, uploaderRoles: newUploaderRoles as Role[] },
+  })
+  await createAuditLog({
+    userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "ASSET_ATTACHMENT", entityId: attachmentId,
+    entityLabel: attachment.originalName,
+    oldData: { visibility: attachment.visibility },
+    newData: { visibility, uploaderRoles: newUploaderRoles },
+  })
+  revalidatePath(`/dashboard/assets/${attachment.assetId}`)
+  return { success: true }
+}
+
+export async function deleteAssetAttachment(attachmentId: number): Promise<Result> {
+  const session = await getServerSession(authOptions)
+  if (!session) return { error: "Neautorizovaný." }
+
+  const roles = session.user.roles as Role[]
+  if (!roles.includes("SPRAVCA_KARIET") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
+    return { error: "Nemáte oprávnenie mazať prílohy." }
+  }
+
+  const attachment = await prisma.assetAttachment.findFirst({
+    where: { id: attachmentId },
+    select: { id: true, assetId: true, storedName: true },
+  })
+  if (!attachment) return { error: "Príloha nebola nájdená." }
+
+  try {
+    await unlink(join(process.cwd(), "uploads", "assets", attachment.storedName))
+  } catch {
+    // Súbor už nemusí existovať na disku
+  }
+
+  await prisma.assetAttachment.delete({ where: { id: attachmentId } })
+  await createAuditLog({
+    userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+    action: "DELETE", entityType: "ASSET_ATTACHMENT", entityId: attachmentId,
+    entityLabel: attachment.storedName,
+    oldData: { assetId: attachment.assetId, storedName: attachment.storedName },
+  })
+  revalidatePath(`/dashboard/assets/${attachment.assetId}`)
+  return { success: true }
 }

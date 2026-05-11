@@ -43,9 +43,10 @@ interface Props {
   currentUserId: number
   userRoles: string[]
   supervisors: { id: number; firstName: string; lastName: string }[]
+  isAppAdmin?: boolean
 }
 
-export default function TravelOrdersClient({ orders, currentUserId, userRoles, supervisors }: Props) {
+export default function TravelOrdersClient({ orders, currentUserId, userRoles, supervisors, isAppAdmin = false }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("ALL")
@@ -81,20 +82,28 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Cestovné príkazy a vyúčtovania</p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => openNew("TUZEMSKY")}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            <Plane size={15} />
-            Tuzemský príkaz
-          </button>
-          <button
-            onClick={() => openNew("ZAHRANICNY")}
-            className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
-          >
-            <Globe size={15} />
-            Zahraničný príkaz
-          </button>
+          {isAppAdmin ? (
+            <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+              Režim len na čítanie
+            </span>
+          ) : (
+            <>
+              <button
+                onClick={() => openNew("TUZEMSKY")}
+                className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                <Plane size={15} />
+                Tuzemský príkaz
+              </button>
+              <button
+                onClick={() => openNew("ZAHRANICNY")}
+                className="flex items-center gap-2 px-3 py-2 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors"
+              >
+                <Globe size={15} />
+                Zahraničný príkaz
+              </button>
+            </>
+          )}
         </div>
       </div>
 
@@ -132,7 +141,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
               <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Typ</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Účel / Cieľ</th>
               <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Termín</th>
-              {isSpravcaPC && (
+              {(isSpravcaPC || isAppAdmin) && (
                 <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Zamestnanec</th>
               )}
               <th className="text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400">Stav</th>
@@ -144,7 +153,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
             {filtered.length === 0 && (
               <tr>
                 <td
-                  colSpan={isSpravcaPC ? 8 : 7}
+                  colSpan={(isSpravcaPC || isAppAdmin) ? 8 : 7}
                   className="px-4 py-10 text-center text-gray-400 dark:text-gray-500"
                 >
                   Žiadne príkazy
@@ -176,7 +185,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
                   <p>{fmtDate(o.departureAt)}</p>
                   <p className="text-xs text-gray-400">– {fmtDate(o.returnAt)}</p>
                 </td>
-                {isSpravcaPC && (
+                {(isSpravcaPC || isAppAdmin) && (
                   <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
                     {o.user.firstName} {o.user.lastName}
                   </td>

@@ -17,6 +17,10 @@ import {
   Pencil,
   X,
   Loader2,
+  Paperclip,
+  Trash2,
+  Upload,
+  AlertTriangle,
 } from "lucide-react"
 import {
   assetTypeLabels,
@@ -36,7 +40,7 @@ import type {
   FunctionStatus,
   AssetKind,
 } from "@/generated/prisma/enums"
-import { updateAsset, updateSecurityNote, updateBpFields } from "../actions"
+import { updateSecurityNote, updateBpFields, deleteAssetAttachment, updateAttachmentVisibility } from "../actions"
 import { useTablePrefs, type ColDef } from "@/lib/useTablePrefs"
 import { useColResize } from "@/lib/useColResize"
 import ColumnManager from "@/components/ColumnManager"
@@ -52,6 +56,19 @@ type RecipientEntry = {
   returnedTo: string | null
   returnNote: string | null
   isCurrent: boolean
+}
+
+type AttachmentVisibility = "Everyone" | "ManagersAndSecurity" | "OwnRoleOnly"
+
+type AttachmentEntry = {
+  id: number
+  originalName: string
+  storedName: string
+  size: number
+  visibility: AttachmentVisibility
+  uploaderRoles: string[]
+  uploaderName: string
+  createdAt: string
 }
 
 type RoomEntry = {
@@ -70,6 +87,7 @@ interface Props {
   backHref: string
   asset: {
     id: number
+    version: number
     type: string
     name: string
     brand: string
@@ -97,8 +115,10 @@ interface Props {
   }
   recipientHistory: RecipientEntry[]
   roomHistory: RoomEntry[]
+  attachments: AttachmentEntry[]
   isManager: boolean
   isSecurityWorker: boolean
+  isAppAdmin?: boolean
   userId: number
 }
 
@@ -340,6 +360,7 @@ function Field({ label, required, children }: { label: string; required?: boolea
 
 type AssetForEdit = {
   id: number
+  version: number
   type: string
   name: string
   brand: string
@@ -355,154 +376,377 @@ type AssetForEdit = {
   isSecurity: boolean
 }
 
-function EditAssetModal({ asset, onClose }: { asset: AssetForEdit; onClose: () => void }) {
-  const router = useRouter()
-  const formRef = useRef<HTMLFormElement>(null)
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState("")
+// ── Optimistic-lock helpers ────────────────────────────────────────────────
 
-  const currentYear = new Date().getFullYear()
+type AssetEditForm = {
+  type: string
+  name: string
+  brand: string
+  serialNumber: string
+  usagePlace: string
+  yearOfManufacture: string
+  kind: string
+  acquisitionDate: string
+  functionStatus: string
+  publicNote: string
+  recordNote: string
+  securityNote: string
+  isSecurity: boolean
+}
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!formRef.current) return
-    setPending(true)
-    setError("")
-    const result = await updateAsset(asset.id, new FormData(formRef.current))
-    setPending(false)
-    if (result.error) {
-      setError(result.error)
-    } else {
-      router.refresh()
-      onClose()
+const ALL_FORM_KEYS = [
+  "type", "name", "brand", "serialNumber", "usagePlace",
+  "yearOfManufacture", "kind", "acquisitionDate", "functionStatus",
+  "publicNote", "recordNote", "securityNote", "isSecurity",
+] as const
+
+const EDIT_FIELD_LABELS: Record<string, string> = {
+  type: "Typ", name: "Názov", brand: "Značka", serialNumber: "Výrobné číslo",
+  usagePlace: "Miesto použitia", yearOfManufacture: "Rok výroby", kind: "Druh majetku",
+  acquisitionDate: "Dátum nadobudnutia", functionStatus: "Stav funkčnosti",
+  publicNote: "Verejná poznámka", recordNote: "Evidenčná poznámka",
+  securityNote: "BP Poznámka", isSecurity: "Bezpečnostný",
+}
+
+function assetToForm(a: AssetForEdit): AssetEditForm {
+  return {
+    type: a.type, name: a.name, brand: a.brand,
+    serialNumber: a.serialNumber ?? "",
+    usagePlace: a.usagePlace,
+    yearOfManufacture: a.yearOfManufacture?.toString() ?? "",
+    kind: a.kind,
+    acquisitionDate: a.acquisitionDate ?? "",
+    functionStatus: a.functionStatus,
+    publicNote: a.publicNote ?? "",
+    recordNote: a.recordNote ?? "",
+    securityNote: a.securityNote ?? "",
+    isSecurity: a.isSecurity,
+  }
+}
+
+function dbToForm(db: Record<string, unknown>): AssetEditForm {
+  const rawAcq = db.acquisitionDate
+  const acquisitionDate = rawAcq
+    ? typeof rawAcq === "string" ? rawAcq.split("T")[0] : ""
+    : ""
+  return {
+    type: String(db.type ?? ""),
+    name: String(db.name ?? ""),
+    brand: String(db.brand ?? "Neurcena"),
+    serialNumber: db.serialNumber ? String(db.serialNumber) : "",
+    usagePlace: String(db.usagePlace ?? ""),
+    yearOfManufacture: db.yearOfManufacture != null ? String(db.yearOfManufacture) : "",
+    kind: String(db.kind ?? ""),
+    acquisitionDate,
+    functionStatus: String(db.functionStatus ?? ""),
+    publicNote: db.publicNote ? String(db.publicNote) : "",
+    recordNote: db.recordNote ? String(db.recordNote) : "",
+    securityNote: db.securityNote ? String(db.securityNote) : "",
+    isSecurity: Boolean(db.isSecurity),
+  }
+}
+
+function buildPatch(form: AssetEditForm, keys: readonly (keyof AssetEditForm)[]): Record<string, unknown> {
+  return Object.fromEntries(keys.map(k => [k, form[k]]))
+}
+
+function fmtFieldValue(key: string, val: string | boolean | null | undefined): string {
+  if (val === null || val === undefined || val === "") return "—"
+  if (typeof val === "boolean") return val ? "Áno" : "Nie"
+  const s = String(val)
+  switch (key) {
+    case "type": return assetTypeLabels[s as AssetType] ?? s
+    case "brand": return brandLabels[s as Brand] ?? s
+    case "usagePlace": return usagePlaceLabels[s as UsagePlace] ?? s
+    case "kind": return assetKindLabels[s as AssetKind] ?? s
+    case "functionStatus": return functionStatusLabels[s as FunctionStatus] ?? s
+    default: return s
+  }
+}
+
+type ConflictState = {
+  version: number
+  dbForm: AssetEditForm
+  conflictKeys: string[]
+  userPatch: Record<string, unknown>
+}
+
+function ConflictResolutionModal({
+  conflictKeys, myForm, dbForm, basePatch, onResolve, onCancel,
+}: {
+  conflictKeys: string[]
+  myForm: AssetEditForm
+  dbForm: AssetEditForm
+  basePatch: Record<string, unknown>
+  onResolve: (resolved: Record<string, unknown>) => void
+  onCancel: () => void
+}) {
+  const [choices, setChoices] = useState<Record<string, "mine" | "db">>(() =>
+    Object.fromEntries(conflictKeys.map(k => [k, "mine" as const]))
+  )
+
+  function confirm() {
+    const resolved = { ...basePatch }
+    for (const key of conflictKeys) {
+      if (choices[key] === "db") resolved[key] = dbForm[key as keyof AssetEditForm]
     }
+    onResolve(resolved)
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl my-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Upraviť majetok</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">#{asset.id} · {asset.name}</p>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-            <X size={18} />
+    <div className="fixed inset-0 z-[60] flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg p-6">
+        <div className="flex items-center gap-2 mb-1">
+          <AlertTriangle size={18} className="text-orange-500 shrink-0" />
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Konflikt zmien</h2>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-5">
+          Iný používateľ zmenil niektoré polia, ktoré ste práve upravili. Pre každé pole vyberte, ktorú hodnotu chcete ponechať.
+        </p>
+        <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-1">
+          {conflictKeys.map(key => (
+            <div key={key} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+              <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  {EDIT_FIELD_LABELS[key] ?? key}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-gray-200 dark:divide-gray-700">
+                <label className={`cursor-pointer p-3 transition-colors ${choices[key] === "mine" ? "bg-blue-50 dark:bg-blue-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  <input type="radio" className="sr-only" checked={choices[key] === "mine"} onChange={() => setChoices(p => ({ ...p, [key]: "mine" }))} />
+                  <p className={`text-[10px] font-bold uppercase tracking-wide mb-1 ${choices[key] === "mine" ? "text-blue-600 dark:text-blue-400" : "text-gray-400"}`}>
+                    Moja hodnota
+                  </p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 break-words">
+                    {fmtFieldValue(key, myForm[key as keyof AssetEditForm])}
+                  </p>
+                </label>
+                <label className={`cursor-pointer p-3 transition-colors ${choices[key] === "db" ? "bg-orange-50 dark:bg-orange-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  <input type="radio" className="sr-only" checked={choices[key] === "db"} onChange={() => setChoices(p => ({ ...p, [key]: "db" }))} />
+                  <p className={`text-[10px] font-bold uppercase tracking-wide mb-1 ${choices[key] === "db" ? "text-orange-600 dark:text-orange-400" : "text-gray-400"}`}>
+                    Hodnota z DB
+                  </p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 break-words">
+                    {fmtFieldValue(key, dbForm[key as keyof AssetEditForm])}
+                  </p>
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onCancel} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+            Zrušiť (bez uloženia)
+          </button>
+          <button onClick={confirm} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 font-medium">
+            Potvrdiť a uložiť
           </button>
         </div>
-
-        <form ref={formRef} onSubmit={handleSubmit}>
-          <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
-            <div>
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Identifikácia</p>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Typ" required>
-                  <select name="type" required className={inputCls} defaultValue={asset.type}>
-                    {(Object.keys(assetTypeLabels) as AssetType[]).map((k) => (
-                      <option key={k} value={k}>{assetTypeLabels[k]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Značka">
-                  <select name="brand" className={inputCls} defaultValue={asset.brand}>
-                    {(Object.keys(brandLabels) as Brand[]).map((k) => (
-                      <option key={k} value={k}>{brandLabels[k]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <div className="col-span-2">
-                  <Field label="Názov / Popis" required>
-                    <input type="text" name="name" required defaultValue={asset.name} className={inputCls} />
-                  </Field>
-                </div>
-                <div className="col-span-2">
-                  <Field label="Výrobné číslo (sériové)">
-                    <input type="text" name="serialNumber" defaultValue={asset.serialNumber ?? ""} className={inputCls} />
-                  </Field>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Klasifikácia & Stav</p>
-              <div className="grid grid-cols-2 gap-4">
-                <Field label="Druh majetku" required>
-                  <select name="kind" required className={inputCls} defaultValue={asset.kind}>
-                    {(Object.keys(assetKindLabels) as AssetKind[]).map((k) => (
-                      <option key={k} value={k}>{assetKindLabels[k]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Miesto použitia" required>
-                  <select name="usagePlace" required className={inputCls} defaultValue={asset.usagePlace}>
-                    {(Object.keys(usagePlaceLabels) as UsagePlace[]).map((k) => (
-                      <option key={k} value={k}>{usagePlaceLabels[k]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Funkčný stav" required>
-                  <select name="functionStatus" required className={inputCls} defaultValue={asset.functionStatus}>
-                    {(Object.keys(functionStatusLabels) as FunctionStatus[]).map((k) => (
-                      <option key={k} value={k}>{functionStatusLabels[k]}</option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="Rok výroby">
-                  <input type="number" name="yearOfManufacture" min={1900} max={currentYear + 1} defaultValue={asset.yearOfManufacture ?? ""} className={inputCls} />
-                </Field>
-                <div className="col-span-2">
-                  <Field label="Dátum nadobudnutia">
-                    <input type="date" name="acquisitionDate" defaultValue={asset.acquisitionDate ?? ""} className={inputCls} />
-                  </Field>
-                </div>
-
-                <div className="col-span-2">
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" name="isSecurity" defaultChecked={asset.isSecurity} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Bezpečnostný</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Poznámky</p>
-              <div className="space-y-3">
-                <Field label="Verejná poznámka">
-                  <textarea name="publicNote" rows={2} defaultValue={asset.publicNote ?? ""} placeholder="Viditeľná pre všetkých" maxLength={1000} className={inputCls} />
-                </Field>
-                <Field label="Evidenčná poznámka">
-                  <textarea name="recordNote" rows={2} defaultValue={asset.recordNote ?? ""} placeholder="Interná poznámka (nie pre BP)" maxLength={1000} className={inputCls} />
-                </Field>
-                <Field label="BP Poznámka">
-                  <textarea name="securityNote" rows={2} defaultValue={asset.securityNote ?? ""} placeholder="Pre bezpečnostného pracovníka" maxLength={2000} className={inputCls} />
-                </Field>
-              </div>
-            </div>
-          </div>
-
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
-            {error ? (
-              <p className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</p>
-            ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-500">
-                Polia označené <span className="text-red-500">*</span> sú povinné
-              </p>
-            )}
-            <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
-                Zrušiť
-              </button>
-              <button type="submit" disabled={pending} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                {pending && <Loader2 size={14} className="animate-spin" />}
-                {pending ? "Ukladám..." : "Uložiť zmeny"}
-              </button>
-            </div>
-          </div>
-        </form>
       </div>
     </div>
+  )
+}
+
+function EditAssetModal({ asset, onClose }: { asset: AssetForEdit; onClose: () => void }) {
+  const router = useRouter()
+  const original = useRef<AssetEditForm>(assetToForm(asset))
+  const [form, setForm] = useState<AssetEditForm>(() => assetToForm(asset))
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+  const [conflict, setConflict] = useState<ConflictState | null>(null)
+
+  const currentYear = new Date().getFullYear()
+
+  function upd<K extends keyof AssetEditForm>(k: K, v: AssetEditForm[K]) {
+    setForm(p => ({ ...p, [k]: v }))
+  }
+
+  const dirtyKeys = ALL_FORM_KEYS.filter(k => form[k] !== original.current[k])
+
+  async function submitPatch(ver: number, patch: Record<string, unknown>, attempt = 0) {
+    setPending(true)
+    setError("")
+    try {
+      const res = await fetch(`/api/assets/${asset.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ version: ver, patchData: patch }),
+      })
+      if (res.ok) {
+        router.refresh()
+        onClose()
+        return
+      }
+      const data = await res.json()
+      if (res.status === 409 && attempt < 1) {
+        const dbForm = dbToForm(data.currentAsset)
+        const patchKeys = Object.keys(patch)
+        const dbChangedKeys = ALL_FORM_KEYS.filter(k => dbForm[k] !== original.current[k])
+        const conflictKeys = dbChangedKeys.filter(k => patchKeys.includes(k))
+
+        if (conflictKeys.length === 0) {
+          // Auto-merge: accept non-conflicting DB changes into form, retry same patch
+          const autoMerge = Object.fromEntries(
+            dbChangedKeys.filter(k => !patchKeys.includes(k))
+              .map(k => [k, dbForm[k as keyof AssetEditForm]])
+          ) as Partial<AssetEditForm>
+          setForm(prev => ({ ...prev, ...autoMerge }))
+          await submitPatch(data.currentAsset.version, patch, attempt + 1)
+        } else {
+          setConflict({ version: data.currentAsset.version, dbForm, conflictKeys, userPatch: patch })
+        }
+        return
+      }
+      setError(data?.error ?? "Nastala chyba pri ukladaní. Skúste znova.")
+    } finally {
+      setPending(false)
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (dirtyKeys.length === 0) { onClose(); return }
+    await submitPatch(asset.version, buildPatch(form, dirtyKeys))
+  }
+
+  function handleConflictResolved(resolved: Record<string, unknown>) {
+    const c = conflict!
+    setConflict(null)
+    submitPatch(c.version, resolved, 1)
+  }
+
+  return (
+    <>
+      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
+        <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+        <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl my-auto">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Upraviť majetok</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">#{asset.id} · {form.name}</p>
+            </div>
+            <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X size={18} />
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+            <div className="px-6 py-5 space-y-5 max-h-[70vh] overflow-y-auto">
+              <div>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Identifikácia</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Typ" required>
+                    <select name="type" required className={inputCls} value={form.type} onChange={e => upd("type", e.target.value)}>
+                      {(Object.keys(assetTypeLabels) as AssetType[]).map(k => <option key={k} value={k}>{assetTypeLabels[k]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Značka">
+                    <select name="brand" className={inputCls} value={form.brand} onChange={e => upd("brand", e.target.value)}>
+                      {(Object.keys(brandLabels) as Brand[]).map(k => <option key={k} value={k}>{brandLabels[k]}</option>)}
+                    </select>
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Názov / Popis" required>
+                      <input type="text" name="name" required value={form.name} onChange={e => upd("name", e.target.value)} className={inputCls} />
+                    </Field>
+                  </div>
+                  <div className="col-span-2">
+                    <Field label="Výrobné číslo (sériové)">
+                      <input type="text" name="serialNumber" value={form.serialNumber} onChange={e => upd("serialNumber", e.target.value)} pattern="[^\s]+" className={inputCls} />
+                    </Field>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Klasifikácia & Stav</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Druh majetku" required>
+                    <select name="kind" required className={inputCls} value={form.kind} onChange={e => upd("kind", e.target.value)}>
+                      {(Object.keys(assetKindLabels) as AssetKind[]).map(k => <option key={k} value={k}>{assetKindLabels[k]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Miesto použitia" required>
+                    <select name="usagePlace" required className={inputCls} value={form.usagePlace} onChange={e => upd("usagePlace", e.target.value)}>
+                      {(Object.keys(usagePlaceLabels) as UsagePlace[]).map(k => <option key={k} value={k}>{usagePlaceLabels[k]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Funkčný stav" required>
+                    <select name="functionStatus" required className={inputCls} value={form.functionStatus} onChange={e => upd("functionStatus", e.target.value)}>
+                      {(Object.keys(functionStatusLabels) as FunctionStatus[]).map(k => <option key={k} value={k}>{functionStatusLabels[k]}</option>)}
+                    </select>
+                  </Field>
+                  <Field label="Rok výroby">
+                    <input type="number" name="yearOfManufacture" min={1900} max={currentYear + 1} value={form.yearOfManufacture} onChange={e => upd("yearOfManufacture", e.target.value)} className={inputCls} />
+                  </Field>
+                  <div className="col-span-2">
+                    <Field label="Dátum nadobudnutia">
+                      <input type="date" name="acquisitionDate" value={form.acquisitionDate} onChange={e => upd("acquisitionDate", e.target.value)} className={inputCls} />
+                    </Field>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="flex items-center gap-3 cursor-pointer select-none">
+                      <input type="checkbox" name="isSecurity" checked={form.isSecurity} onChange={e => upd("isSecurity", e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Bezpečnostný</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Poznámky</p>
+                <div className="space-y-3">
+                  <Field label="Verejná poznámka">
+                    <textarea name="publicNote" rows={2} value={form.publicNote} onChange={e => upd("publicNote", e.target.value)} placeholder="Viditeľná pre všetkých" maxLength={1000} className={inputCls} />
+                  </Field>
+                  <Field label="Evidenčná poznámka">
+                    <textarea name="recordNote" rows={2} value={form.recordNote} onChange={e => upd("recordNote", e.target.value)} placeholder="Interná poznámka (nie pre BP)" maxLength={1000} className={inputCls} />
+                  </Field>
+                  <Field label="BP Poznámka">
+                    <textarea name="securityNote" rows={2} value={form.securityNote} onChange={e => upd("securityNote", e.target.value)} placeholder="Pre bezpečnostného pracovníka" maxLength={2000} className={inputCls} />
+                  </Field>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+              {error ? (
+                <p className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</p>
+              ) : dirtyKeys.length > 0 ? (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  {dirtyKeys.length} {dirtyKeys.length === 1 ? "pole zmenené" : "polia zmenené"}
+                </p>
+              ) : (
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Polia označené <span className="text-red-500">*</span> sú povinné
+                </p>
+              )}
+              <div className="flex gap-2">
+                <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+                  Zrušiť
+                </button>
+                <button type="submit" disabled={pending || dirtyKeys.length === 0} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                  {pending && <Loader2 size={14} className="animate-spin" />}
+                  {pending ? "Ukladám..." : "Uložiť zmeny"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {conflict && (
+        <ConflictResolutionModal
+          conflictKeys={conflict.conflictKeys}
+          myForm={form}
+          dbForm={conflict.dbForm}
+          basePatch={conflict.userPatch}
+          onResolve={handleConflictResolved}
+          onCancel={() => setConflict(null)}
+        />
+      )}
+    </>
   )
 }
 
@@ -569,10 +813,10 @@ function EditBpFieldsModal({ asset, onClose }: { asset: BpAsset; onClose: () => 
                   <span className="text-sm font-medium text-gray-700 dark:text-gray-300">ESET</span>
                 </label>
                 <Field label="IMEI 1">
-                  <input type="text" name="bpImei1" defaultValue={asset.bpImei1 ?? ""} className={inputCls} />
+                  <input type="text" name="bpImei1" defaultValue={asset.bpImei1 ?? ""} pattern="\d*" inputMode="numeric" className={inputCls} />
                 </Field>
                 <Field label="IMEI 2">
-                  <input type="text" name="bpImei2" defaultValue={asset.bpImei2 ?? ""} className={inputCls} />
+                  <input type="text" name="bpImei2" defaultValue={asset.bpImei2 ?? ""} pattern="\d*" inputMode="numeric" className={inputCls} />
                 </Field>
                 <Field label="Podporovaný do">
                   <input type="date" name="bpPodporovanyDo" defaultValue={asset.bpPodporovanyDo ?? ""} className={inputCls} />
@@ -653,17 +897,352 @@ function EditSecurityNoteModal({ assetId, currentNote, onClose }: { assetId: num
   )
 }
 
+// ── Attachments Panel ──────────────────────────────────────────────────────
+
+const VISIBILITY_LABELS: Record<AttachmentVisibility, string> = {
+  Everyone: "Každý s prístupom",
+  ManagersAndSecurity: "Správca kariet a BP",
+  OwnRoleOnly: "Iba moja rola",
+}
+
+const VISIBILITY_COLORS: Record<AttachmentVisibility, string> = {
+  Everyone: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  ManagersAndSecurity: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  OwnRoleOnly: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} kB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function AttachmentsPanel({
+  assetId,
+  attachments,
+  canUpload,
+  isManager,
+  isSecurityWorker,
+}: {
+  assetId: number
+  attachments: AttachmentEntry[]
+  canUpload: boolean
+  isManager: boolean
+  isSecurityWorker: boolean
+}) {
+  const router = useRouter()
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [file, setFile] = useState<File | null>(null)
+  const [visibility, setVisibility] = useState<AttachmentVisibility>("Everyone")
+  const hasBothRoles = isManager && isSecurityWorker
+  const [ownRoleSelection, setOwnRoleSelection] = useState<string[]>(
+    isManager && isSecurityWorker ? [] : isManager ? ["SPRAVCA_KARIET"] : ["BEZPECNOSTNY_PRACOVNIK"]
+  )
+  const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState("")
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deleteError, setDeleteError] = useState("")
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editVisibility, setEditVisibility] = useState<AttachmentVisibility>("Everyone")
+  const [editRoleSelection, setEditRoleSelection] = useState<string[]>([])
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState("")
+
+  function startEdit(a: AttachmentEntry) {
+    setEditingId(a.id)
+    setEditVisibility(a.visibility)
+    const editorRoles: string[] = []
+    if (isManager) editorRoles.push("SPRAVCA_KARIET")
+    if (isSecurityWorker) editorRoles.push("BEZPECNOSTNY_PRACOVNIK")
+    setEditRoleSelection(a.uploaderRoles.filter((r) => editorRoles.includes(r)))
+    setEditError("")
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditError("")
+  }
+
+  function toggleEditRole(role: string) {
+    setEditRoleSelection((prev) =>
+      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]
+    )
+  }
+
+  async function handleSaveVisibility(attachmentId: number) {
+    setEditSaving(true)
+    setEditError("")
+    const result = await updateAttachmentVisibility(
+      attachmentId,
+      editVisibility,
+      editVisibility === "OwnRoleOnly" ? editRoleSelection : undefined
+    )
+    setEditSaving(false)
+    if (result.error) {
+      setEditError(result.error)
+    } else {
+      setEditingId(null)
+      router.refresh()
+    }
+  }
+
+  function toggleOwnRole(role: string) {
+    setOwnRoleSelection(prev =>
+      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+    )
+  }
+
+  async function handleUpload(e: React.FormEvent) {
+    e.preventDefault()
+    if (!file) return
+    setUploading(true)
+    setUploadError("")
+    const fd = new FormData()
+    fd.append("file", file)
+    fd.append("assetId", String(assetId))
+    fd.append("visibility", visibility)
+    if (visibility === "OwnRoleOnly") {
+      fd.append("visibilityRoles", JSON.stringify(ownRoleSelection))
+    }
+    try {
+      const res = await fetch("/api/attachments", { method: "POST", body: fd })
+      const data = await res.json()
+      if (!res.ok) {
+        setUploadError(data.error ?? "Chyba pri nahrávaní.")
+      } else {
+        setFile(null)
+        if (fileRef.current) fileRef.current.value = ""
+        router.refresh()
+      }
+    } catch {
+      setUploadError("Chyba pri nahrávaní. Skúste znova.")
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDelete(id: number) {
+    setDeletingId(id)
+    setDeleteError("")
+    const result = await deleteAssetAttachment(id)
+    setDeletingId(null)
+    if (result.error) setDeleteError(result.error)
+    else router.refresh()
+  }
+
+  return (
+    <div className="p-5 space-y-5">
+      {canUpload && (
+        <form onSubmit={handleUpload} className="border border-dashed border-gray-300 dark:border-gray-600 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Nahrať prílohu</p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor</label>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.txt"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="w-full text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 hover:file:bg-gray-200 dark:hover:file:bg-gray-600 cursor-pointer"
+              />
+            </div>
+            <div className="sm:w-56">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kto vidí prílohu</label>
+              <select
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as AttachmentVisibility)}
+                className={inputCls}
+              >
+                <option value="Everyone">Každý s prístupom k majetku</option>
+                <option value="ManagersAndSecurity">Správca kariet a Bezpečnostný pracovník</option>
+                <option value="OwnRoleOnly">Iba moja rola</option>
+              </select>
+            </div>
+          </div>
+          {visibility === "OwnRoleOnly" && hasBothRoles && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-2">
+              <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                Máte obe role — vyberte, pre ktorú rolu platí toto obmedzenie:
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={ownRoleSelection.includes("SPRAVCA_KARIET")}
+                    onChange={() => toggleOwnRole("SPRAVCA_KARIET")}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Správca kariet</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={ownRoleSelection.includes("BEZPECNOSTNY_PRACOVNIK")}
+                    onChange={() => toggleOwnRole("BEZPECNOSTNY_PRACOVNIK")}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Bezpečnostný pracovník</span>
+                </label>
+              </div>
+              {ownRoleSelection.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">Vyberte aspoň jednu rolu.</p>
+              )}
+            </div>
+          )}
+          {uploadError && <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>}
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!file || uploading || (visibility === "OwnRoleOnly" && hasBothRoles && ownRoleSelection.length === 0)}
+              className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {uploading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+              {uploading ? "Nahrávam..." : "Nahrať"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {deleteError && <p className="text-xs text-red-600 dark:text-red-400">{deleteError}</p>}
+
+      {attachments.length === 0 ? (
+        <EmptyState icon={Paperclip} text="Žiadne prílohy." />
+      ) : (
+        <ul className="space-y-2">
+          {attachments.map((a) => (
+            <li key={a.id} className="rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 group">
+                <Paperclip size={15} className="text-gray-400 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{a.originalName}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {formatSize(a.size)} · {a.uploaderName} · {a.createdAt}
+                  </p>
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${VISIBILITY_COLORS[a.visibility]}`}>
+                  {VISIBILITY_LABELS[a.visibility]}
+                </span>
+                <a
+                  href={`/api/assets/file/${a.storedName}`}
+                  download={a.originalName}
+                  className="p-1.5 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors shrink-0"
+                  title="Stiahnuť"
+                >
+                  <FileText size={15} />
+                </a>
+                {canUpload && (
+                  <>
+                    <button
+                      onClick={() => editingId === a.id ? cancelEdit() : startEdit(a)}
+                      className={`p-1.5 rounded-lg transition-colors shrink-0 ${
+                        editingId === a.id
+                          ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30"
+                          : "text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                      }`}
+                      title="Upraviť prístup"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(a.id)}
+                      disabled={deletingId === a.id}
+                      className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors shrink-0 disabled:opacity-40"
+                      title="Zmazať prílohu"
+                    >
+                      {deletingId === a.id ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {editingId === a.id && (
+                <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 space-y-3">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Upraviť prístup</p>
+                  <div className="flex flex-wrap items-start gap-3">
+                    <div className="flex-1 min-w-48">
+                      <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Kto vidí prílohu</label>
+                      <select
+                        value={editVisibility}
+                        onChange={(e) => setEditVisibility(e.target.value as AttachmentVisibility)}
+                        className={inputCls}
+                      >
+                        <option value="Everyone">Každý s prístupom k majetku</option>
+                        <option value="ManagersAndSecurity">Správca kariet a Bezpečnostný pracovník</option>
+                        <option value="OwnRoleOnly">Iba moja rola</option>
+                      </select>
+                    </div>
+                  </div>
+                  {editVisibility === "OwnRoleOnly" && hasBothRoles && (
+                    <div className="rounded-lg border border-amber-200 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 space-y-2">
+                      <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                        Pre ktorú rolu platí obmedzenie?
+                      </p>
+                      <div className="flex flex-wrap gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editRoleSelection.includes("SPRAVCA_KARIET")}
+                            onChange={() => toggleEditRole("SPRAVCA_KARIET")}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Správca kariet</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={editRoleSelection.includes("BEZPECNOSTNY_PRACOVNIK")}
+                            onChange={() => toggleEditRole("BEZPECNOSTNY_PRACOVNIK")}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700 dark:text-gray-300">Bezpečnostný pracovník</span>
+                        </label>
+                      </div>
+                      {editRoleSelection.length === 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">Vyberte aspoň jednu rolu.</p>
+                      )}
+                    </div>
+                  )}
+                  {editError && <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>}
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={cancelEdit}
+                      className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Zrušiť
+                    </button>
+                    <button
+                      onClick={() => handleSaveVisibility(a.id)}
+                      disabled={editSaving || (editVisibility === "OwnRoleOnly" && hasBothRoles && editRoleSelection.length === 0)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {editSaving && <Loader2 size={12} className="animate-spin" />}
+                      {editSaving ? "Ukladám..." : "Uložiť"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function AssetDetailClient({
   backHref,
   asset,
   recipientHistory,
   roomHistory,
+  attachments,
   isManager,
   isSecurityWorker,
+  isAppAdmin = false,
   userId,
 }: Props) {
-  const [tab, setTab] = useState<"recipients" | "rooms">("recipients")
+  const [tab, setTab] = useState<"recipients" | "rooms" | "attachments">("recipients")
+  const canUpload = !isAppAdmin && (isManager || isSecurityWorker)
   const [showEdit, setShowEdit] = useState(false)
   const [showSecurityEdit, setShowSecurityEdit] = useState(false)
   const [showBpEdit, setShowBpEdit] = useState(false)
@@ -675,6 +1254,11 @@ export default function AssetDetailClient({
 
   return (
     <div>
+      {isAppAdmin && (
+        <div className="flex items-center gap-2 px-4 py-2.5 mb-4 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-lg text-sm text-violet-700 dark:text-violet-300">
+          Režim len na čítanie — údaje majetku sú skryté okrem ID.
+        </div>
+      )}
       {/* Breadcrumb */}
       <Link
         href={backHref}
@@ -949,12 +1533,34 @@ export default function AssetDetailClient({
               {roomHistory.length}
             </span>
           </button>
+          <button
+            onClick={() => setTab("attachments")}
+            className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-colors ${
+              tab === "attachments"
+                ? "border-green-600 text-green-600 dark:text-green-400"
+                : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+            }`}
+          >
+            <Paperclip size={15} />
+            Prílohy
+            {attachments.length > 0 && (
+              <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${
+                tab === "attachments"
+                  ? "bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300"
+                  : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
+              }`}>
+                {attachments.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {tab === "recipients" ? (
           <RecipientTable items={recipientHistory} userId={userId} />
-        ) : (
+        ) : tab === "rooms" ? (
           <RoomTable items={roomHistory} userId={userId} />
+        ) : (
+          <AttachmentsPanel assetId={asset.id} attachments={attachments} canUpload={canUpload} isManager={isManager} isSecurityWorker={isSecurityWorker} />
         )}
       </div>
 

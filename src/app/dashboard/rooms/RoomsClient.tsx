@@ -227,7 +227,7 @@ function ReturnAssetModal({
   )
 }
 
-export default function RoomsClient({ rooms, allUsers, userId, userName }: { rooms: Room[]; allUsers: AllUser[]; userId: number; userName: string }) {
+export default function RoomsClient({ rooms, allUsers, userId, userName, isAppAdmin = false }: { rooms: Room[]; allUsers: AllUser[]; userId: number; userName: string; isAppAdmin?: boolean }) {
   const router = useRouter()
   const [showNew, setShowNew] = useState(false)
   const [expanded, setExpanded] = useState<number | null>(null)
@@ -301,9 +301,15 @@ export default function RoomsClient({ rooms, allUsers, userId, userName }: { roo
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Miestnosti</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{rooms.length} miestností</p>
         </div>
-        <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-          <Plus size={15} />Nová miestnosť
-        </button>
+        {isAppAdmin ? (
+          <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+            Režim len na čítanie
+          </span>
+        ) : (
+          <button onClick={() => setShowNew(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+            <Plus size={15} />Nová miestnosť
+          </button>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -323,9 +329,11 @@ export default function RoomsClient({ rooms, allUsers, userId, userName }: { roo
                   <Users size={11} />{room.accesses.length}
                 </span>
                 <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">#{room.id}</span>
-                <button onClick={() => handleDelete(room)} className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Zmazať miestnosť">
-                  <Trash2 size={14} />
-                </button>
+                {!isAppAdmin && (
+                  <button onClick={() => handleDelete(room)} className="p-1.5 text-gray-300 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Zmazať miestnosť">
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
 
               {isOpen && (

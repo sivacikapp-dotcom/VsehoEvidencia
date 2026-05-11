@@ -5,6 +5,7 @@ import { writeFile, mkdir } from "fs/promises"
 import { join } from "path"
 import { NextRequest, NextResponse } from "next/server"
 import type { AttachmentVisibility, Role } from "@/generated/prisma/enums"
+import { createAuditLog } from "@/lib/auditLog"
 
 const MAX_SIZE = 20 * 1024 * 1024 // 20 MB
 const VALID_VISIBILITIES: AttachmentVisibility[] = ["Everyone", "ManagersAndSecurity", "OwnRoleOnly"]
@@ -14,6 +15,9 @@ export async function POST(request: NextRequest) {
   if (!session) return NextResponse.json({ error: "Neautorizovaný." }, { status: 401 })
 
   const roles = session.user.roles as Role[]
+  if ((roles as string[]).includes("SPRAVCA_APLIKACIE")) {
+    return NextResponse.json({ error: "Nemáte oprávnenie nahrávať prílohy." }, { status: 403 })
+  }
   const isManager = roles.includes("SPRAVCA_KARIET")
   const isSecurityWorker = roles.includes("BEZPECNOSTNY_PRACOVNIK")
   if (!isManager && !isSecurityWorker) {
@@ -30,6 +34,7 @@ export async function POST(request: NextRequest) {
   const file = formData.get("file") as File | null
   const assetIdRaw = formData.get("assetId") as string | null
   const visibility = formData.get("visibility") as AttachmentVisibility | null
+  const visibilityRolesRaw = formData.get("visibilityRoles") as string | null
 
   if (!file || !assetIdRaw || !visibility) {
     return NextResponse.json({ error: "Chýbajúce povinné polia." }, { status: 400 })
@@ -69,11 +74,26 @@ export async function POST(request: NextRequest) {
   const bytes = await file.arrayBuffer()
   await writeFile(join(uploadDir, storedName), new Uint8Array(bytes))
 
-  const uploaderRoles: Role[] = []
-  if (isManager) uploaderRoles.push("SPRAVCA_KARIET")
-  if (isSecurityWorker) uploaderRoles.push("BEZPECNOSTNY_PRACOVNIK")
+  const allUploaderRoles: Role[] = []
+  if (isManager) allUploaderRoles.push("SPRAVCA_KARIET")
+  if (isSecurityWorker) allUploaderRoles.push("BEZPECNOSTNY_PRACOVNIK")
 
-  await prisma.assetAttachment.create({
+  let uploaderRoles: Role[] = allUploaderRoles
+  if (visibility === "OwnRoleOnly" && visibilityRolesRaw) {
+    try {
+      const parsed = JSON.parse(visibilityRolesRaw)
+      if (Array.isArray(parsed)) {
+        const filtered = (parsed as string[]).filter((r) =>
+          allUploaderRoles.includes(r as Role)
+        ) as Role[]
+        if (filtered.length > 0) uploaderRoles = filtered
+      }
+    } catch {
+      // fall through — use allUploaderRoles
+    }
+  }
+
+  const created = await prisma.assetAttachment.create({
     data: {
       assetId,
       storedName,
@@ -85,6 +105,12 @@ export async function POST(request: NextRequest) {
       uploadedById: parseInt(session.user.id),
       uploaderName: session.user.name ?? "Neznámy",
     },
+  })
+  await createAuditLog({
+    userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "ASSET_ATTACHMENT", entityId: created.id,
+    entityLabel: file.name,
+    newData: { originalName: file.name, assetId, visibility },
   })
 
   return NextResponse.json({ success: true })

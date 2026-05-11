@@ -31,6 +31,7 @@ interface Props {
   documents: Document[]
   canCreate: boolean
   isAdmin: boolean
+  isAppAdmin?: boolean
   allUsers: { id: number; name: string; email: string }[]
   agendaGestors: { id: number; name: string }[]
   agendaGestorIds: Set<number>
@@ -72,6 +73,7 @@ export default function DocumentsClient({
   documents,
   canCreate,
   isAdmin,
+  isAppAdmin = false,
   allUsers,
   agendaGestors,
   agendaGestorIds,
@@ -173,7 +175,12 @@ export default function DocumentsClient({
             </p>
           )}
         </div>
-        {canCreate && (
+        {isAppAdmin && (
+          <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+            Režim len na čítanie
+          </span>
+        )}
+        {canCreate && !isAppAdmin && (
           <button
             onClick={openNew}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"

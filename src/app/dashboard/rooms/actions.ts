@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { createAuditLog } from "@/lib/auditLog"
 
 type Result = { error?: string; success?: boolean }
 
@@ -20,7 +21,12 @@ export async function createRoom(name: string): Promise<Result> {
   if (existing) return { error: `Miestnosť „${trimmed}" už existuje.` }
 
   try {
-    await prisma.room.create({ data: { name: trimmed } })
+    const created = await prisma.room.create({ data: { name: trimmed } })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "CREATE", entityType: "ROOM", entityId: created.id, entityLabel: created.name,
+      newData: { name: created.name },
+    })
     revalidatePath("/dashboard/rooms")
     return { success: true }
   } catch {
@@ -43,8 +49,15 @@ export async function deleteRoom(roomId: number): Promise<Result> {
     }
   }
 
+  const room = await prisma.room.findUnique({ where: { id: roomId }, select: { name: true } })
+
   try {
     await prisma.room.delete({ where: { id: roomId } })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "DELETE", entityType: "ROOM", entityId: roomId, entityLabel: room?.name ?? null,
+      oldData: room ? { name: room.name } : null,
+    })
     revalidatePath("/dashboard/rooms")
     return { success: true }
   } catch {
@@ -68,6 +81,11 @@ export async function setRoomAccess(
         data: userIds.map((userId) => ({ roomId, userId })),
       })
     }
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ROOM_ACCESS", entityId: roomId, entityLabel: null,
+      newData: { roomId, userIds },
+    })
     revalidatePath("/dashboard/rooms")
     revalidatePath("/dashboard/users")
     return { success: true }

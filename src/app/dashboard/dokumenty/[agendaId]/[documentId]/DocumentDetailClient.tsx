@@ -73,6 +73,7 @@ interface Props {
   canManageAccess: boolean
   canManageGestors: boolean
   isAdmin: boolean
+  isAppAdmin?: boolean
   allUsers: DocUserWithAccess[]
   allUsersForAttachment: DocUser[]
   nextZnacka: string
@@ -347,6 +348,7 @@ export default function DocumentDetailClient({
   canEdit,
   canManageAccess,
   canManageGestors,
+  isAppAdmin = false,
   allUsers,
   allUsersForAttachment,
   nextZnacka,
@@ -449,6 +451,13 @@ export default function DocumentDetailClient({
         <ChevronRight size={13} />
         <span className="text-gray-700 dark:text-gray-300 font-mono text-xs">{doc.znacka}</span>
       </div>
+
+      {/* App admin read-only banner */}
+      {isAppAdmin && (
+        <div className="flex items-center gap-2 px-4 py-2.5 mb-4 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-lg text-sm text-violet-700 dark:text-violet-300">
+          Režim len na čítanie — väčšina údajov dokumentu je skrytá.
+        </div>
+      )}
 
       {/* Historical version banner */}
       {!doc.isLatest && (

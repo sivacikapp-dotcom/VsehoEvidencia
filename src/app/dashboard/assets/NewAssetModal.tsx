@@ -19,10 +19,12 @@ interface Props {
 function Field({
   label,
   required,
+  hint,
   children,
 }: {
   label: string
   required?: boolean
+  hint?: string
   children: React.ReactNode
 }) {
   return (
@@ -32,6 +34,7 @@ function Field({
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
+      {hint && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
     </div>
   )
 }
@@ -118,11 +121,12 @@ export default function NewAssetModal({ onClose }: Props) {
                 </div>
 
                 <div className="col-span-2">
-                  <Field label="Výrobné číslo (sériové)">
+                  <Field label="Výrobné číslo (sériové)" hint="Nesmie obsahovať medzery (napr. SN-2024-00123)">
                     <input
                       type="text"
                       name="serialNumber"
                       placeholder="napr. SN-2024-00123"
+                      pattern="[^\s]+"
                       className={inputCls}
                     />
                   </Field>
@@ -154,7 +158,7 @@ export default function NewAssetModal({ onClose }: Props) {
                   </select>
                 </Field>
 
-                <Field label="Rok výroby">
+                <Field label="Rok výroby" hint={`Rok výroby v rozsahu 1900 – ${currentYear + 1}`}>
                   <input
                     type="number"
                     name="yearOfManufacture"

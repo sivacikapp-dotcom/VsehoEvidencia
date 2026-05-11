@@ -18,6 +18,7 @@ export default async function DocumentDetailPage({
   if (!session) redirect("/login")
 
   const userId = parseInt(session.user.id)
+  const userRoles = (session.user as { roles?: string[] }).roles ?? []
 
   const [doc, userDoc, allUsers] = await Promise.all([
     prisma.document.findUnique({
@@ -62,15 +63,16 @@ export default async function DocumentDetailPage({
   const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === agendaId) ?? false
   const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === documentId) ?? false
   const hasExplicitAccess = userDoc?.documentAccesses.some((g) => g.documentId === documentId) ?? false
+  const isAppAdmin = userRoles.includes("SPRAVCA_APLIKACIE") && !isAdmin && !isAgendaGestor && !isDocGestor && !hasExplicitAccess
 
-  if (doc.confidentiality === "DOVERNI") {
+  if (doc.confidentiality === "DOVERNI" && !isAppAdmin) {
     const canAccess = isAdmin || isAgendaGestor || isDocGestor || hasExplicitAccess
     if (!canAccess) redirect(`/dashboard/dokumenty/${agendaId}`)
   }
 
-  const canEdit = isAdmin || isAgendaGestor || isDocGestor
-  const canManageAccess = isAdmin || isAgendaGestor || isDocGestor
-  const canManageGestors = isAdmin || isAgendaGestor
+  const canEdit = !isAppAdmin && (isAdmin || isAgendaGestor || isDocGestor)
+  const canManageAccess = !isAppAdmin && (isAdmin || isAgendaGestor || isDocGestor)
+  const canManageGestors = !isAppAdmin && (isAdmin || isAgendaGestor)
 
   // Version history
   const rootId = doc.parentId ?? doc.id
@@ -94,31 +96,33 @@ export default async function DocumentDetailPage({
     .filter((u) => u.id !== userId)
     .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email }))
 
+  const HIDDEN = "••••••"
+
   return (
     <DocumentDetailClient
       document={{
         id: doc.id,
-        znacka: doc.znacka,
+        znacka: isAppAdmin ? HIDDEN : doc.znacka,
         nazov: doc.nazov,
-        datumSchvalenia: doc.datumSchvalenia.toISOString().split("T")[0],
-        datumPrvehoSchvalenia: doc.datumPrvehoSchvalenia?.toISOString().split("T")[0] ?? null,
-        confidentiality: doc.confidentiality,
-        prilohaPath: doc.prilohaPath,
-        prilohaName: doc.prilohaName,
+        datumSchvalenia: isAppAdmin ? HIDDEN : doc.datumSchvalenia.toISOString().split("T")[0],
+        datumPrvehoSchvalenia: isAppAdmin ? null : (doc.datumPrvehoSchvalenia?.toISOString().split("T")[0] ?? null),
+        confidentiality: isAppAdmin ? "VEREJNY" : doc.confidentiality,
+        prilohaPath: isAppAdmin ? null : doc.prilohaPath,
+        prilohaName: isAppAdmin ? null : doc.prilohaName,
         agendaId: doc.agendaId,
         agendaName: doc.agenda.name,
         version: doc.version,
         isLatest: doc.isLatest,
-        gestors: doc.gestors.map((g) => ({
+        gestors: isAppAdmin ? [] : doc.gestors.map((g) => ({
           id: g.user.id,
           name: `${g.user.firstName} ${g.user.lastName}`,
         })),
-        accesses: doc.accesses.map((a) => ({
+        accesses: isAppAdmin ? [] : doc.accesses.map((a) => ({
           id: a.userId,
           name: `${a.user.firstName} ${a.user.lastName}`,
           email: a.user.email,
         })),
-        attachments: doc.attachments.map((a) => ({
+        attachments: isAppAdmin ? [] : doc.attachments.map((a) => ({
           id: a.id,
           znacka: a.znacka,
           nazov: a.nazov,
@@ -144,9 +148,9 @@ export default async function DocumentDetailPage({
       versionHistory={allVersions.map((v) => ({
         id: v.id,
         version: v.version,
-        znacka: v.znacka,
+        znacka: isAppAdmin ? HIDDEN : v.znacka,
         nazov: v.nazov,
-        datumSchvalenia: v.datumSchvalenia.toISOString().split("T")[0],
+        datumSchvalenia: isAppAdmin ? HIDDEN : v.datumSchvalenia.toISOString().split("T")[0],
         isLatest: v.isLatest,
       }))}
       latestDocId={latestDocId}
@@ -155,9 +159,10 @@ export default async function DocumentDetailPage({
       canEdit={canEdit}
       canManageAccess={canManageAccess}
       canManageGestors={canManageGestors}
-      isAdmin={isAdmin}
-      allUsers={otherUsers.map((u) => ({ ...u, hasAccess: accessUserIds.has(u.id) }))}
-      allUsersForAttachment={otherUsers}
+      isAdmin={!isAppAdmin && isAdmin}
+      isAppAdmin={isAppAdmin}
+      allUsers={isAppAdmin ? [] : otherUsers.map((u) => ({ ...u, hasAccess: accessUserIds.has(u.id) }))}
+      allUsersForAttachment={isAppAdmin ? [] : otherUsers}
     />
   )
 }

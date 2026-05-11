@@ -125,10 +125,11 @@ interface Props {
   currentUserId: number
   userRoles: string[]
   supervisors: { id: number; firstName: string; lastName: string }[]
-  rates?: TravelRates
+  rates?: TravelRates | null
+  isAppAdmin?: boolean
 }
 
-export default function TravelOrderDetailClient({ order, currentUserId, userRoles, supervisors, rates }: Props) {
+export default function TravelOrderDetailClient({ order, currentUserId, userRoles, supervisors, rates, isAppAdmin = false }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [pending, setPending] = useState<string | null>(null)
@@ -203,6 +204,11 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
 
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-5">
+      {isAppAdmin && (
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-lg text-sm text-violet-700 dark:text-violet-300">
+          Režim len na čítanie — finančné hodnoty sú skryté.
+        </div>
+      )}
       {/* header */}
       <div className="flex items-center gap-3">
         <Link
@@ -668,7 +674,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
           }}
           existing={order.expenseReport}
           readOnly={erLocked}
-          rates={rates}
+          rates={rates ?? undefined}
           onClose={() => setShowExpense(false)}
           onSaved={() => {
             setShowExpense(false)

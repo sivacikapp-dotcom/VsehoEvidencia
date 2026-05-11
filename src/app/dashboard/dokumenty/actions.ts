@@ -8,10 +8,14 @@ import { writeFile, unlink, mkdir } from "fs/promises"
 import path from "path"
 import { randomUUID } from "crypto"
 import { notifyDocumentAdded, notifyDocumentDeleted } from "@/lib/notificationHelpers"
+import { createAuditLog } from "@/lib/auditLog"
 
-async function getSession() {
+async function getSession(opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session) throw new Error("Neautorizovaný")
+  if (opts.mutation && (session.user.roles as string[]).includes("SPRAVCA_APLIKACIE")) {
+    throw new Error("Rola Správca aplikácie nemá oprávnenie na úpravy.")
+  }
   return session
 }
 
@@ -28,7 +32,7 @@ async function getUserDocContext(userId: number) {
 }
 
 export async function createAgenda(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
   if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže vytvárať agendy")
@@ -37,7 +41,12 @@ export async function createAgenda(formData: FormData) {
   if (!name) return { error: "Názov agendy je povinný" }
 
   try {
-    await prisma.agenda.create({ data: { name } })
+    const created = await prisma.agenda.create({ data: { name } })
+    await createAuditLog({
+      userId, userEmail: session.user.email, userName: session.user.name,
+      action: "CREATE", entityType: "AGENDA", entityId: created.id, entityLabel: created.name,
+      newData: { name: created.name },
+    })
     revalidatePath("/dashboard/dokumenty")
     return { success: true }
   } catch {
@@ -46,18 +55,24 @@ export async function createAgenda(formData: FormData) {
 }
 
 export async function deleteAgenda(agendaId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
   if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže mazať agendy")
 
+  const agenda = await prisma.agenda.findUnique({ where: { id: agendaId }, select: { name: true } })
   await prisma.agenda.delete({ where: { id: agendaId } })
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "DELETE", entityType: "AGENDA", entityId: agendaId, entityLabel: agenda?.name ?? null,
+    oldData: agenda ? { name: agenda.name } : null,
+  })
   revalidatePath("/dashboard/dokumenty")
   return { success: true }
 }
 
 export async function createDocument(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -112,13 +127,17 @@ export async function createDocument(formData: FormData) {
     agendaId,
     userId
   )
-
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT", entityId: newDoc.id, entityLabel: `${znacka} – ${nazov}`,
+    newData: { znacka, nazov, confidentiality: newDoc.confidentiality, agendaId },
+  })
   revalidatePath(`/dashboard/dokumenty/${agendaId}`)
   return { success: true }
 }
 
 export async function updateDocument(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -170,14 +189,19 @@ export async function updateDocument(formData: FormData) {
       prilohaName,
     },
   })
-
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "DOCUMENT", entityId: documentId, entityLabel: `${znacka} – ${nazov}`,
+    oldData: { znacka: doc.znacka, nazov: doc.nazov, confidentiality: doc.confidentiality },
+    newData: { znacka, nazov, confidentiality },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}`)
   return { success: true }
 }
 
 export async function deleteDocument(documentId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -225,12 +249,18 @@ export async function deleteDocument(documentId: number) {
     await prisma.document.delete({ where: { id: documentId } })
   }
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "DELETE", entityType: "DOCUMENT", entityId: documentId,
+    entityLabel: `${doc.znacka} – ${doc.nazov}`,
+    oldData: { znacka: doc.znacka, nazov: doc.nazov, agendaId: doc.agendaId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}`)
   return { success: true }
 }
 
 export async function createDocumentVersion(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -335,12 +365,18 @@ export async function createDocumentVersion(formData: FormData) {
     return doc
   })
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT", entityId: newDoc.id,
+    entityLabel: `${znacka} – ${nazov} (v${nextVersion})`,
+    newData: { znacka, nazov, version: nextVersion, parentId: rootId, agendaId: source.agendaId },
+  })
   revalidatePath(`/dashboard/dokumenty/${source.agendaId}`)
   return { success: true, newDocumentId: newDoc.id }
 }
 
 export async function createAttachmentVersion(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const sourceId = parseInt(formData.get("sourceAttachmentId") as string)
@@ -409,12 +445,18 @@ export async function createAttachmentVersion(formData: FormData) {
     }
   })
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_ATTACHMENT", entityId: source.documentId,
+    entityLabel: `${znacka} (v${nextVersion})`,
+    newData: { znacka, nazov, version: nextVersion, documentId: source.documentId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${source.documentId}`)
   return { success: true }
 }
 
 export async function grantDocumentAccess(documentId: number, targetUserId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -431,13 +473,17 @@ export async function grantDocumentAccess(documentId: number, targetUserId: numb
     create: { userId: targetUserId, documentId, grantedById: userId },
     update: {},
   })
-
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_ACCESS", entityId: documentId, entityLabel: null,
+    newData: { documentId, targetUserId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   return { success: true }
 }
 
 export async function revokeDocumentAccess(documentId: number, targetUserId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -452,13 +498,17 @@ export async function revokeDocumentAccess(documentId: number, targetUserId: num
   await prisma.documentAccess.deleteMany({
     where: { userId: targetUserId, documentId },
   })
-
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "DELETE", entityType: "DOCUMENT_ACCESS", entityId: documentId, entityLabel: null,
+    oldData: { documentId, targetUserId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   return { success: true }
 }
 
 export async function setAgendaGestor(agendaId: number, targetUserId: number, add: boolean) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
   if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže prideľovať gestorov agend")
@@ -473,24 +523,34 @@ export async function setAgendaGestor(agendaId: number, targetUserId: number, ad
     await prisma.agendaGestor.deleteMany({ where: { userId: targetUserId, agendaId } })
   }
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: add ? "CREATE" : "DELETE", entityType: "AGENDA_GESTOR", entityId: agendaId, entityLabel: null,
+    newData: { agendaId, targetUserId, add },
+  })
   revalidatePath(`/dashboard/dokumenty/${agendaId}`)
   return { success: true }
 }
 
 export async function setUserDocRole(targetUserId: number, role: "SPRAVCA_DOKUMENTOV" | "CITATEL") {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
   if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže meniť roly")
   if (targetUserId === userId) return { error: "Nemôžete zmeniť vlastnú rolu" }
 
   await prisma.user.update({ where: { id: targetUserId }, data: { docRole: role } })
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "USER", entityId: targetUserId, entityLabel: null,
+    newData: { docRole: role },
+  })
   revalidatePath("/dashboard/dokumenty")
   return { success: true }
 }
 
 export async function setDocumentGestor(documentId: number, targetUserId: number | null) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
 
@@ -507,6 +567,11 @@ export async function setDocumentGestor(documentId: number, targetUserId: number
     await prisma.documentGestor.create({ data: { userId: targetUserId, documentId } })
   }
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: targetUserId ? "CREATE" : "DELETE", entityType: "DOCUMENT_GESTOR", entityId: documentId, entityLabel: null,
+    newData: { documentId, targetUserId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}`)
   return { success: true }
@@ -526,7 +591,7 @@ async function canEditDoc(userId: number, documentId: number) {
 }
 
 export async function createDocumentAttachment(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const documentId = parseInt(formData.get("documentId") as string)
@@ -569,12 +634,18 @@ export async function createDocumentAttachment(formData: FormData) {
     },
   })
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_ATTACHMENT", entityId: documentId,
+    entityLabel: `${znacka} – ${nazov}`,
+    newData: { znacka, nazov, confidentiality, documentId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   return { success: true }
 }
 
 export async function updateDocumentAttachment(formData: FormData) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const attachmentId = parseInt(formData.get("attachmentId") as string)
@@ -629,12 +700,19 @@ export async function updateDocumentAttachment(formData: FormData) {
     },
   })
 
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "DOCUMENT_ATTACHMENT", entityId: attachmentId,
+    entityLabel: `${znacka} – ${nazov}`,
+    oldData: { znacka: attachment.znacka, nazov: attachment.nazov, confidentiality: attachment.confidentiality },
+    newData: { znacka, nazov, confidentiality },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${attachment.documentId}`)
   return { success: true }
 }
 
 export async function grantAttachmentAccess(attachmentId: number, targetUserId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const attachment = await prisma.documentAttachment.findUnique({ where: { id: attachmentId } })
@@ -654,7 +732,7 @@ export async function grantAttachmentAccess(attachmentId: number, targetUserId: 
 }
 
 export async function revokeAttachmentAccess(attachmentId: number, targetUserId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const attachment = await prisma.documentAttachment.findUnique({ where: { id: attachmentId } })
@@ -672,7 +750,7 @@ export async function revokeAttachmentAccess(attachmentId: number, targetUserId:
 }
 
 export async function deleteDocumentAttachment(attachmentId: number) {
-  const session = await getSession()
+  const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
 
   const attachment = await prisma.documentAttachment.findUnique({ where: { id: attachmentId } })
@@ -687,6 +765,12 @@ export async function deleteDocumentAttachment(attachmentId: number) {
   }
 
   await prisma.documentAttachment.delete({ where: { id: attachmentId } })
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "DELETE", entityType: "DOCUMENT_ATTACHMENT", entityId: attachmentId,
+    entityLabel: `${attachment.znacka} – ${attachment.nazov}`,
+    oldData: { znacka: attachment.znacka, nazov: attachment.nazov, documentId: attachment.documentId },
+  })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${attachment.documentId}`)
   return { success: true }
 }

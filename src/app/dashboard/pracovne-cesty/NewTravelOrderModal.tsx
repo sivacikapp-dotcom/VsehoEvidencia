@@ -238,6 +238,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
                   onChange={(e) => set("returnAt", e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Musí byť neskôr ako dátum odchodu.</p>
               </div>
             </div>
           </section>

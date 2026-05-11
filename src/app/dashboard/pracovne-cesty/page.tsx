@@ -14,23 +14,25 @@ export default async function PracovneCestyPage() {
 
   const isSpravcaPC = roles.includes("SPRAVCA_PC")
   const isNadriadeny = roles.includes("NADRIADENY")
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaPC && !isNadriadeny
 
   // Načítaj príkazy podľa roly — kombinovaný OR aby používateľ s viacerými rolami videl všetko
-  const orClauses: object[] = [
+  // SPRAVCA_APLIKACIE vidí všetky príkazy
+  const orClauses: object[] = isAppAdmin ? [{}] : [
     { userId }, // vlastné príkazy (vždy)
   ]
-  if (isNadriadeny) {
+  if (!isAppAdmin && isNadriadeny) {
     orClauses.push({
       supervisorId: userId,
       status: { in: ["PENDING_SUPERVISOR", "PENDING_MANAGER", "APPROVED", "REJECTED"] },
     })
   }
-  if (isSpravcaPC) {
+  if (!isAppAdmin && isSpravcaPC) {
     orClauses.push({ status: { in: ["PENDING_MANAGER", "APPROVED", "REJECTED"] } })
   }
 
   const orders = await prisma.travelOrder.findMany({
-    where: { OR: orClauses },
+    where: isAppAdmin ? {} : { OR: orClauses },
     include: {
       user: { select: { id: true, firstName: true, lastName: true } },
       supervisor: { select: { id: true, firstName: true, lastName: true } },
@@ -49,9 +51,9 @@ export default async function PracovneCestyPage() {
 
   const serialized = orders.map((o) => ({
     ...o,
-    advanceEUR: o.advanceEUR ? Number(o.advanceEUR) : null,
-    advanceForeign: o.advanceForeign ? Number(o.advanceForeign) : null,
-    pocketMoney: o.pocketMoney ? Number(o.pocketMoney) : null,
+    advanceEUR: isAppAdmin ? null : (o.advanceEUR ? Number(o.advanceEUR) : null),
+    advanceForeign: isAppAdmin ? null : (o.advanceForeign ? Number(o.advanceForeign) : null),
+    pocketMoney: isAppAdmin ? null : (o.pocketMoney ? Number(o.pocketMoney) : null),
     departureAt: o.departureAt.toISOString(),
     returnAt: o.returnAt.toISOString(),
     supervisorApprovedAt: o.supervisorApprovedAt?.toISOString() ?? null,
@@ -68,6 +70,7 @@ export default async function PracovneCestyPage() {
       currentUserId={userId}
       userRoles={roles}
       supervisors={supervisors}
+      isAppAdmin={isAppAdmin}
     />
   )
 }

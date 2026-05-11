@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import bcrypt from "bcryptjs"
 import type { Role } from "@/generated/prisma/enums"
+import { createAuditLog } from "@/lib/auditLog"
 
 type Result = { error?: string; success?: boolean }
 
@@ -22,7 +23,7 @@ function validatePassword(password: string): string | null {
 export async function createUser(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || !callerRoles.includes("SPRAVCA_KARIET")) {
+  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie vytvárať používateľov." }
   }
 
@@ -53,8 +54,13 @@ export async function createUser(formData: FormData): Promise<Result> {
 
   try {
     const hash = await bcrypt.hash(password, 12)
-    await prisma.user.create({
+    const created = await prisma.user.create({
       data: { firstName, lastName, email, password: hash, roles, supervisorId: supervisorId || null },
+    })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "CREATE", entityType: "USER", entityId: created.id, entityLabel: created.email,
+      newData: { firstName, lastName, email, roles, supervisorId: supervisorId || null },
     })
     revalidatePath("/dashboard/users")
     return { success: true }
@@ -70,15 +76,23 @@ export async function updateUser(
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || !callerRoles.includes("SPRAVCA_KARIET")) {
+  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie upravovať používateľov." }
   }
   if (roles.length === 0) return { error: "Vyberte aspoň jednu rolu." }
+
+  const oldUser = await prisma.user.findUnique({ where: { id: userId }, select: { roles: true, supervisorId: true, email: true } })
 
   try {
     await prisma.user.update({
       where: { id: userId },
       data: { roles, supervisorId },
+    })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "USER", entityId: userId, entityLabel: oldUser?.email ?? null,
+      oldData: oldUser ? { roles: oldUser.roles, supervisorId: oldUser.supervisorId } : null,
+      newData: { roles, supervisorId },
     })
     revalidatePath("/dashboard/users")
     revalidatePath(`/dashboard/users/${userId}`)
@@ -88,13 +102,45 @@ export async function updateUser(
   }
 }
 
+export async function deleteUser(userId: number): Promise<Result> {
+  const session = await getServerSession(authOptions)
+  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
+  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
+    return { error: "Nemáte oprávnenie mazať používateľov." }
+  }
+  if (parseInt(session.user.id) === userId) {
+    return { error: "Nemôžete vymazať vlastný účet." }
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true, firstName: true, lastName: true } })
+  if (!user) return { error: "Používateľ neexistuje." }
+
+  const activeAssets = await prisma.assetRecipientAssignment.count({ where: { userId, returnedAt: null } })
+  if (activeAssets > 0) {
+    return { error: `Používateľ má ${activeAssets} aktívnych priradení majetku. Najprv vráťte majetok.` }
+  }
+
+  try {
+    await prisma.user.delete({ where: { id: userId } })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "DELETE", entityType: "USER", entityId: userId, entityLabel: user.email,
+      oldData: { email: user.email, firstName: user.firstName, lastName: user.lastName },
+    })
+    revalidatePath("/dashboard/users")
+    return { success: true }
+  } catch {
+    return { error: "Nastala chyba pri mazaní." }
+  }
+}
+
 export async function setUserRoomAccess(
   userId: number,
   roomIds: number[]
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || !callerRoles.includes("SPRAVCA_KARIET")) {
+  if (!session || (!callerRoles.includes("SPRAVCA_KARIET") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie spravovať prístupy do miestností." }
   }
 
@@ -105,6 +151,11 @@ export async function setUserRoomAccess(
         data: roomIds.map((roomId) => ({ userId, roomId })),
       })
     }
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "ROOM_ACCESS", entityId: userId, entityLabel: null,
+      newData: { userId, roomIds },
+    })
     revalidatePath(`/dashboard/users/${userId}`)
     revalidatePath("/dashboard/rooms")
     return { success: true }

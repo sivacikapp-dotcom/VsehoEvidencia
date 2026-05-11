@@ -27,6 +27,7 @@ interface DocUser {
 interface Props {
   agendas: Agenda[]
   isAdmin: boolean
+  isAppAdmin?: boolean
   allUsers: DocUser[]
 }
 
@@ -35,7 +36,7 @@ const inputCls =
 
 type Tab = "agendy" | "spravcovia"
 
-export default function AgendasClient({ agendas, isAdmin, allUsers }: Props) {
+export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false, allUsers }: Props) {
   const router = useRouter()
   const [tab, setTab] = useState<Tab>("agendy")
 
@@ -85,7 +86,12 @@ export default function AgendasClient({ agendas, isAdmin, allUsers }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {isAdmin && tab === "agendy" && (
+          {isAppAdmin && (
+            <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+              Režim len na čítanie
+            </span>
+          )}
+          {isAdmin && tab === "agendy" && !isAppAdmin && (
             <button
               onClick={() => { setShowNew(true); setError("") }}
               className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"

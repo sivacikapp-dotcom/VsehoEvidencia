@@ -38,9 +38,10 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
   const isSpravcaPC = roles.includes("SPRAVCA_PC")
   const isOwner = order.userId === userId
   const isSupervisor = order.supervisorId === userId
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaPC && !isOwner && !isSupervisor
 
-  // Prístup: vlastník, nadriadený príkazu, alebo SPRAVCA_PC
-  if (!isOwner && !isSupervisor && !isSpravcaPC) notFound()
+  // Prístup: vlastník, nadriadený príkazu, SPRAVCA_PC alebo SPRAVCA_APLIKACIE
+  if (!isOwner && !isSupervisor && !isSpravcaPC && !isAppAdmin) notFound()
 
   const rates = await getCurrentTravelRates()
 
@@ -54,9 +55,9 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
 
   const serialized = {
     ...order,
-    advanceEUR: order.advanceEUR ? Number(order.advanceEUR) : null,
-    advanceForeign: order.advanceForeign ? Number(order.advanceForeign) : null,
-    pocketMoney: order.pocketMoney ? Number(order.pocketMoney) : null,
+    advanceEUR: isAppAdmin ? null : (order.advanceEUR ? Number(order.advanceEUR) : null),
+    advanceForeign: isAppAdmin ? null : (order.advanceForeign ? Number(order.advanceForeign) : null),
+    pocketMoney: isAppAdmin ? null : (order.pocketMoney ? Number(order.pocketMoney) : null),
     departureAt: order.departureAt.toISOString(),
     returnAt: order.returnAt.toISOString(),
     supervisorApprovedAt: order.supervisorApprovedAt?.toISOString() ?? null,
@@ -68,29 +69,29 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
     expenseReport: er
       ? {
           ...er,
-          dietAmount: Number(er.dietAmount),
+          dietAmount: isAppAdmin ? 0 : Number(er.dietAmount),
           actualTransport: er.actualTransport ?? null,
           actualVehicleCategory: er.actualVehicleCategory ?? null,
           actualVehicleRegPlate: er.actualVehicleRegPlate ?? null,
           actualEngineVolume: er.actualEngineVolume ?? null,
-          kmDriven: er.kmDriven ? Number(er.kmDriven) : null,
-          kmBasicRate: er.kmBasicRate ? Number(er.kmBasicRate) : null,
-          fuelConsumption: er.fuelConsumption ? Number(er.fuelConsumption) : null,
-          fuelPricePerL: er.fuelPricePerL ? Number(er.fuelPricePerL) : null,
-          kmCompensation: er.kmCompensation ? Number(er.kmCompensation) : null,
-          publicTransportCost: er.publicTransportCost ? Number(er.publicTransportCost) : null,
-          publicTransportItems: er.publicTransportItems ?? null,
-          taxiCost: er.taxiCost ? Number(er.taxiCost) : null,
-          accommodation: er.accommodation ? Number(er.accommodation) : null,
-          parking: er.parking ? Number(er.parking) : null,
-          otherExpenses: er.otherExpenses ? Number(er.otherExpenses) : null,
-          otherExpenseItems: er.otherExpenseItems ?? null,
-          accommodationItems: er.accommodationItems ?? null,
-          foreignDiet: er.foreignDiet ? Number(er.foreignDiet) : null,
-          pocketMoneyPaid: er.pocketMoneyPaid ? Number(er.pocketMoneyPaid) : null,
-          exchangeRate: er.exchangeRate ? Number(er.exchangeRate) : null,
-          totalExpenses: Number(er.totalExpenses),
-          advanceReceived: Number(er.advanceReceived),
+          kmDriven: isAppAdmin ? null : (er.kmDriven ? Number(er.kmDriven) : null),
+          kmBasicRate: isAppAdmin ? null : (er.kmBasicRate ? Number(er.kmBasicRate) : null),
+          fuelConsumption: isAppAdmin ? null : (er.fuelConsumption ? Number(er.fuelConsumption) : null),
+          fuelPricePerL: isAppAdmin ? null : (er.fuelPricePerL ? Number(er.fuelPricePerL) : null),
+          kmCompensation: isAppAdmin ? null : (er.kmCompensation ? Number(er.kmCompensation) : null),
+          publicTransportCost: isAppAdmin ? null : (er.publicTransportCost ? Number(er.publicTransportCost) : null),
+          publicTransportItems: isAppAdmin ? null : (er.publicTransportItems ?? null),
+          taxiCost: isAppAdmin ? null : (er.taxiCost ? Number(er.taxiCost) : null),
+          accommodation: isAppAdmin ? null : (er.accommodation ? Number(er.accommodation) : null),
+          parking: isAppAdmin ? null : (er.parking ? Number(er.parking) : null),
+          otherExpenses: isAppAdmin ? null : (er.otherExpenses ? Number(er.otherExpenses) : null),
+          otherExpenseItems: isAppAdmin ? null : (er.otherExpenseItems ?? null),
+          accommodationItems: isAppAdmin ? null : (er.accommodationItems ?? null),
+          foreignDiet: isAppAdmin ? null : (er.foreignDiet ? Number(er.foreignDiet) : null),
+          pocketMoneyPaid: isAppAdmin ? null : (er.pocketMoneyPaid ? Number(er.pocketMoneyPaid) : null),
+          exchangeRate: isAppAdmin ? null : (er.exchangeRate ? Number(er.exchangeRate) : null),
+          totalExpenses: isAppAdmin ? 0 : Number(er.totalExpenses),
+          advanceReceived: isAppAdmin ? 0 : Number(er.advanceReceived),
           actualDepartureAt: er.actualDepartureAt.toISOString(),
           actualReturnAt: er.actualReturnAt.toISOString(),
           supervisorApprovedAt: er.supervisorApprovedAt?.toISOString() ?? null,
@@ -99,7 +100,7 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
           managerRejectedAt: er.managerRejectedAt?.toISOString() ?? null,
           createdAt: er.createdAt.toISOString(),
           updatedAt: er.updatedAt.toISOString(),
-          attachments: er.attachments.map((a) => ({
+          attachments: isAppAdmin ? [] : er.attachments.map((a) => ({
             id: a.id,
             storedName: a.storedName,
             originalName: a.originalName,
@@ -118,7 +119,8 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
       currentUserId={userId}
       userRoles={roles}
       supervisors={supervisors}
-      rates={rates}
+      rates={isAppAdmin ? null : rates}
+      isAppAdmin={isAppAdmin}
     />
   )
 }

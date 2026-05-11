@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import AssetsClient from "./AssetsClient"
+import { HIDDEN } from "@/lib/appAdmin"
 
 export default async function AssetsPage() {
   const session = await getServerSession(authOptions)
@@ -11,8 +12,9 @@ export default async function AssetsPage() {
   const roles = session.user.roles
   const isManager = roles.includes("SPRAVCA_KARIET")
   const isSecurity = roles.includes("BEZPECNOSTNY_PRACOVNIK")
-  if (!isManager && !isSecurity) redirect("/dashboard")
-  const securityOnly = isSecurity && !isManager
+  const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isManager && !isSecurity
+  if (!isManager && !isSecurity && !isAppAdmin) redirect("/dashboard")
+  const securityOnly = isSecurity && !isManager && !isAppAdmin
 
   const rawAssets = await prisma.asset.findMany({
     where: securityOnly ? { isSecurity: true } : undefined,
@@ -33,44 +35,45 @@ export default async function AssetsPage() {
     },
   })
 
+  const H = HIDDEN
   const assets = rawAssets.map((a) => ({
     id: a.id,
-    type: a.type,
-    name: a.name,
-    brand: a.brand,
-    serialNumber: a.serialNumber,
-    usagePlace: a.usagePlace,
-    yearOfManufacture: a.yearOfManufacture,
-    allocationStatus: a.allocationStatus,
-    functionStatus: a.functionStatus,
-    publicNote: a.publicNote,
-    kind: a.kind,
-    acquisitionDate: a.acquisitionDate ? a.acquisitionDate.toISOString().split("T")[0] : null,
-    recordNote: a.recordNote,
-    securityNote: a.securityNote,
-    isSecurity: a.isSecurity,
+    type: isAppAdmin ? (H as typeof a.type) : a.type,
+    name: isAppAdmin ? H : a.name,
+    brand: isAppAdmin ? (H as typeof a.brand) : a.brand,
+    serialNumber: isAppAdmin ? H : a.serialNumber,
+    usagePlace: isAppAdmin ? (H as typeof a.usagePlace) : a.usagePlace,
+    yearOfManufacture: isAppAdmin ? null : a.yearOfManufacture,
+    allocationStatus: isAppAdmin ? (H as typeof a.allocationStatus) : a.allocationStatus,
+    functionStatus: isAppAdmin ? (H as typeof a.functionStatus) : a.functionStatus,
+    publicNote: isAppAdmin ? null : a.publicNote,
+    kind: isAppAdmin ? (H as typeof a.kind) : a.kind,
+    acquisitionDate: isAppAdmin ? null : (a.acquisitionDate ? a.acquisitionDate.toISOString().split("T")[0] : null),
+    recordNote: null,
+    securityNote: null,
+    isSecurity: isAppAdmin ? false : a.isSecurity,
     createdAt: a.createdAt.toISOString(),
-    currentRecipient: a.recipientAssignments[0]?.user
+    currentRecipient: isAppAdmin ? null : (a.recipientAssignments[0]?.user
       ? {
           id: a.recipientAssignments[0].user.id,
           name: `${a.recipientAssignments[0].user.firstName} ${a.recipientAssignments[0].user.lastName}`,
         }
-      : null,
-    currentRoom: a.roomAssignments[0]?.room
+      : null),
+    currentRoom: isAppAdmin ? null : (a.roomAssignments[0]?.room
       ? {
           id: a.roomAssignments[0].room.id,
           name: a.roomAssignments[0].room.name,
         }
-      : null,
-    bpVDomene: isSecurity ? a.bpVDomene : null,
-    bpNazovVDomene: isSecurity ? a.bpNazovVDomene : null,
-    bpAktualizovanyDna: isSecurity && a.bpAktualizovanyDna ? a.bpAktualizovanyDna.toISOString().split("T")[0] : null,
-    bpEset: isSecurity ? a.bpEset : null,
-    bpImei1: isSecurity ? a.bpImei1 : null,
-    bpImei2: isSecurity ? a.bpImei2 : null,
-    bpPodporovanyDo: isSecurity && a.bpPodporovanyDo ? a.bpPodporovanyDo.toISOString().split("T")[0] : null,
-    bpTelefonneCislo: isSecurity ? a.bpTelefonneCislo : null,
-    bpPovolenyVDomene: isSecurity ? a.bpPovolenyVDomene : null,
+      : null),
+    bpVDomene: null,
+    bpNazovVDomene: null,
+    bpAktualizovanyDna: null,
+    bpEset: null,
+    bpImei1: !isAppAdmin && isSecurity ? a.bpImei1 : null,
+    bpImei2: !isAppAdmin && isSecurity ? a.bpImei2 : null,
+    bpPodporovanyDo: null,
+    bpTelefonneCislo: null,
+    bpPovolenyVDomene: null,
   }))
 
   let users: { id: number; firstName: string; lastName: string; email: string }[] = []
@@ -97,6 +100,7 @@ export default async function AssetsPage() {
       userRoles={roles}
       currentUserName={session.user.name ?? ""}
       currentUserId={parseInt(session.user.id)}
+      isAppAdmin={isAppAdmin}
     />
   )
 }

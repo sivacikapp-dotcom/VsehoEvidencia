@@ -59,6 +59,7 @@ interface Props {
   userRoles: Role[]
   currentUserName: string
   currentUserId: number
+  isAppAdmin?: boolean
 }
 
 function Badge({ label, colorCls }: { label: string; colorCls: string }) {
@@ -197,7 +198,7 @@ const SECURITY_COLS: ColDef[] = [
 
 type SortKey = "type" | "name" | "brand" | "serialNumber" | "usagePlace" | "yearOfManufacture" | "allocationStatus" | "functionStatus" | "kind" | "acquisitionDate" | "assigned"
 
-export default function AssetsClient({ assets, users, rooms, userRoles, currentUserName, currentUserId }: Props) {
+export default function AssetsClient({ assets, users, rooms, userRoles, currentUserName, currentUserId, isAppAdmin = false }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
@@ -344,13 +345,13 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
               className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md">
               <ExternalLink size={14} />
             </Link>
-            {isManager && (
+            {isManager && !isAppAdmin && (
               <button onClick={() => setAssignAsset(a)} title="Priradiť"
                 className="p-1.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-md">
                 <UserPlus size={14} />
               </button>
             )}
-            {isManager && (a.allocationStatus === "Prideleny_Recipient" || a.allocationStatus === "Prideleny_Room") && (
+            {isManager && !isAppAdmin && (a.allocationStatus === "Prideleny_Recipient" || a.allocationStatus === "Prideleny_Room") && (
               <button onClick={() => handleReturn(a)} title="Vrátiť"
                 className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md">
                 <RotateCcw size={14} />
@@ -470,10 +471,17 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Majetok</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{assets.length} záznamov · zobrazených {filtered.length}</p>
         </div>
-        <button onClick={() => setShowNewModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-          <Plus size={15} />
-          Nový majetok
-        </button>
+        {!isAppAdmin && (
+          <button onClick={() => setShowNewModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+            <Plus size={15} />
+            Nový majetok
+          </button>
+        )}
+        {isAppAdmin && (
+          <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+            Režim len na čítanie
+          </span>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
