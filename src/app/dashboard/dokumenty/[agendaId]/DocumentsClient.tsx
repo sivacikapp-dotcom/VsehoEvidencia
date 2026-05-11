@@ -1,15 +1,16 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useMemo, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   FileText, Plus, Trash2, Pencil, X, Loader2,
   ChevronRight, ArrowLeft, Paperclip, Eye, EyeOff, Lock,
-  UserPlus, UserMinus, Shield,
+  UserPlus, UserMinus, Shield, Search, ArrowUpDown, ChevronUp, ChevronDown,
 } from "lucide-react"
 import { createDocument, updateDocument, deleteDocument, setAgendaGestor } from "../actions"
 import { fmtDate } from "@/lib/formatDate"
+import { MultiSelect } from "@/components/MultiSelect"
 
 type Confidentiality = "VEREJNY" | "INTERNI" | "DOVERNI"
 
@@ -54,6 +55,34 @@ const inputCls =
 
 const selectCls = inputCls
 
+type SortKey = "znacka" | "nazov" | "datumSchvalenia" | "confidentiality"
+
+const confidentialityOptions = (Object.keys(confidentialityLabels) as Confidentiality[]).map(k => ({
+  value: k,
+  label: confidentialityLabels[k],
+}))
+
+const thBase = "px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide"
+
+function Th({ label, colKey, sortKey, sortDir, onSort }: {
+  label: string; colKey: string
+  sortKey: string | null; sortDir: "asc" | "desc"
+  onSort: (k: string) => void
+}) {
+  const active = sortKey === colKey
+  return (
+    <th className={thBase}>
+      <button type="button" onClick={() => onSort(colKey)}
+        className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors whitespace-nowrap">
+        {label}
+        {active
+          ? sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />
+          : <ArrowUpDown size={11} className="opacity-40" />}
+      </button>
+    </th>
+  )
+}
+
 interface DocForm {
   znacka: string
   nazov: string
@@ -89,6 +118,52 @@ export default function DocumentsClient({
   const [fileName, setFileName] = useState<string | null>(null)
   const [removePriloha, setRemovePriloha] = useState(false)
   const [gestorPending, setGestorPending] = useState<number | null>(null)
+
+  // filter / sort state
+  const [search, setSearch] = useState("")
+  const [filterConfidentiality, setFilterConfidentiality] = useState<Set<string>>(new Set())
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+
+  const hasActiveFilters = search || filterConfidentiality.size > 0
+
+  function clearAllFilters() {
+    setSearch(""); setFilterConfidentiality(new Set())
+  }
+
+  function handleSort(key: string) {
+    const k = key as SortKey
+    if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc")
+    else { setSortKey(k); setSortDir("asc") }
+  }
+
+  const filtered = useMemo(() => documents.filter(d => {
+    if (filterConfidentiality.size > 0 && !filterConfidentiality.has(d.confidentiality)) return false
+    if (search) {
+      const q = search.toLowerCase()
+      if (!d.znacka.toLowerCase().includes(q) && !d.nazov.toLowerCase().includes(q)) return false
+    }
+    return true
+  }), [documents, filterConfidentiality, search])
+
+  const sorted = useMemo(() => {
+    if (!sortKey) return filtered
+    return [...filtered].sort((a, b) => {
+      let aVal: string = ""
+      let bVal: string = ""
+      switch (sortKey) {
+        case "znacka": aVal = a.znacka; bVal = b.znacka; break
+        case "nazov": aVal = a.nazov; bVal = b.nazov; break
+        case "datumSchvalenia": aVal = a.datumSchvalenia; bVal = b.datumSchvalenia; break
+        case "confidentiality":
+          aVal = confidentialityLabels[a.confidentiality]
+          bVal = confidentialityLabels[b.confidentiality]
+          break
+      }
+      const cmp = aVal.localeCompare(bVal, "sk")
+      return sortDir === "asc" ? cmp : -cmp
+    })
+  }, [filtered, sortKey, sortDir])
 
   function openNew() {
     setForm(emptyForm)
@@ -197,101 +272,139 @@ export default function DocumentsClient({
           {canCreate && <p className="text-sm mt-1">Pridajte prvý dokument tlačidlom vyššie.</p>}
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Značka</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Názov</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Dátum schválenia</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Dôvernosť</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Gestor</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Príloha</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-              {documents.map((doc) => (
-                <tr
-                  key={doc.id}
-                  onClick={() => router.push(`/dashboard/dokumenty/${agenda.id}/${doc.id}`)}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group cursor-pointer"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-mono text-xs font-medium text-blue-600 dark:text-blue-400">
-                        {doc.znacka}
-                      </span>
-                      {doc.version > 1 && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                          v{doc.version}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-gray-900 dark:text-gray-100">
-                      {doc.nazov}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
-                    {fmtDate(doc.datumSchvalenia)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${confidentialityColors[doc.confidentiality]}`}>
-                      {doc.confidentiality === "DOVERNI" && <Lock size={11} />}
-                      {doc.confidentiality === "INTERNI" && <Eye size={11} />}
-                      {doc.confidentiality === "VEREJNY" && <EyeOff size={11} />}
-                      {confidentialityLabels[doc.confidentiality]}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {doc.gestors[0]
-                      ? <span className="text-xs text-gray-700 dark:text-gray-300">{doc.gestors[0].name}</span>
-                      : <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-                    }
-                  </td>
-                  <td className="px-4 py-3">
-                    {doc.prilohaName ? (
-                      <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                        <Paperclip size={12} />
-                        <span className="truncate max-w-[120px]">{doc.prilohaName}</span>
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {doc.canEdit && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); openEdit(doc) }}
-                            className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                            title="Editovať"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        )}
-                        {doc.canDelete && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); handleDelete(doc.id, doc.nazov) }}
-                            disabled={deleting === doc.id}
-                            className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                            title="Zmazať"
-                          >
-                            {deleting === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                          </button>
-                        )}
-                      </div>
-                      <ChevronRight size={15} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors shrink-0" />
-                    </div>
-                  </td>
+        <>
+          {/* filters */}
+          <div className="flex gap-2 flex-wrap items-center mb-4">
+            <div className="relative">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Hľadať..."
+                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
+              />
+            </div>
+            <MultiSelect
+              placeholder="Dôvernosť"
+              options={confidentialityOptions}
+              selected={filterConfidentiality}
+              onChange={setFilterConfidentiality}
+            />
+            {hasActiveFilters && (
+              <button
+                onClick={clearAllFilters}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors"
+              >
+                <X size={12} /> Zrušiť filtre
+              </button>
+            )}
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+              {sorted.length} / {documents.length}
+            </span>
+          </div>
+
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                  <Th label="Značka" colKey="znacka" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <Th label="Názov" colKey="nazov" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <Th label="Dátum schválenia" colKey="datumSchvalenia" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <Th label="Dôvernosť" colKey="confidentiality" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <th className={thBase}>Gestor</th>
+                  <th className={thBase}>Príloha</th>
+                  <th className="px-4 py-3" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                {sorted.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-10 text-center text-gray-400 dark:text-gray-500">
+                      Žiadne dokumenty nezodpovedajú filtru
+                    </td>
+                  </tr>
+                ) : (
+                  sorted.map((doc) => (
+                    <tr
+                      key={doc.id}
+                      onClick={() => router.push(`/dashboard/dokumenty/${agenda.id}/${doc.id}`)}
+                      className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group cursor-pointer"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs font-medium text-blue-600 dark:text-blue-400">
+                            {doc.znacka}
+                          </span>
+                          {doc.version > 1 && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                              v{doc.version}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="text-gray-900 dark:text-gray-100">{doc.nazov}</span>
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
+                        {fmtDate(doc.datumSchvalenia)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${confidentialityColors[doc.confidentiality]}`}>
+                          {doc.confidentiality === "DOVERNI" && <Lock size={11} />}
+                          {doc.confidentiality === "INTERNI" && <Eye size={11} />}
+                          {doc.confidentiality === "VEREJNY" && <EyeOff size={11} />}
+                          {confidentialityLabels[doc.confidentiality]}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {doc.gestors[0]
+                          ? <span className="text-xs text-gray-700 dark:text-gray-300">{doc.gestors[0].name}</span>
+                          : <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3">
+                        {doc.prilohaName ? (
+                          <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                            <Paperclip size={12} />
+                            <span className="truncate max-w-[120px]">{doc.prilohaName}</span>
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {doc.canEdit && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openEdit(doc) }}
+                                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                title="Editovať"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                            )}
+                            {doc.canDelete && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); handleDelete(doc.id, doc.nazov) }}
+                                disabled={deleting === doc.id}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                title="Zmazať"
+                              >
+                                {deleting === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                              </button>
+                            )}
+                          </div>
+                          <ChevronRight size={15} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors shrink-0" />
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {/* Gestori agendy – only for admin */}
