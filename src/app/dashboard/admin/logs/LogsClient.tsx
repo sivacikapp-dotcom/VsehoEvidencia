@@ -28,12 +28,18 @@ const ACTION_LABELS: Record<string, string> = {
   CREATE: "Vytvorenie",
   UPDATE: "Úprava",
   DELETE: "Vymazanie",
+  LOGIN_SUCCESS: "Prihlásenie",
+  LOGIN_FAILURE: "Neúspešné prihlásenie",
+  LOGOUT: "Odhlásenie",
 }
 
 const ACTION_COLORS: Record<string, string> = {
   CREATE: "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300",
   UPDATE: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
   DELETE: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+  LOGIN_SUCCESS: "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-300",
+  LOGIN_FAILURE: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+  LOGOUT: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
 }
 
 function DiffView({
@@ -208,7 +214,7 @@ export default function LogsClient({
     startTransition(() => router.push(buildUrl(overrides)))
   }
 
-  const ACTIONS = ["CREATE", "UPDATE", "DELETE"]
+  const ACTIONS = ["CREATE", "UPDATE", "DELETE", "LOGIN_SUCCESS", "LOGIN_FAILURE", "LOGOUT"]
 
   return (
     <div className="space-y-6">

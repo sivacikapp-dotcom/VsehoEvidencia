@@ -186,32 +186,6 @@ export default function NewAssetModal({ onClose }: Props) {
               </div>
             </div>
 
-            {/* Section: Poznámky */}
-            <div>
-              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">
-                Poznámky
-              </p>
-              <div className="space-y-3">
-                <Field label="Verejná poznámka">
-                  <textarea
-                    name="publicNote"
-                    rows={2}
-                    placeholder="Viditeľná pre všetkých"
-                    maxLength={1000}
-                    className={inputCls}
-                  />
-                </Field>
-                <Field label="Evidenčná poznámka">
-                  <textarea
-                    name="recordNote"
-                    rows={2}
-                    placeholder="Interná poznámka (nie pre BP)"
-                    maxLength={1000}
-                    className={inputCls}
-                  />
-                </Field>
-              </div>
-            </div>
           </div>
 
           {/* Footer */}

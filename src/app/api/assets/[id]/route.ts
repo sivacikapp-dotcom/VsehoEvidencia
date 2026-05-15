@@ -8,14 +8,14 @@ import { notifyAssetChanged } from "@/lib/notificationHelpers"
 const ALLOWED_FIELDS = new Set([
   "type", "name", "brand", "serialNumber", "usagePlace",
   "yearOfManufacture", "kind", "acquisitionDate", "functionStatus",
-  "publicNote", "recordNote", "securityNote", "isSecurity",
+  "isSecurity",
 ])
 
 function coerceField(key: string, val: unknown): unknown {
   if (key === "yearOfManufacture") return (val === "" || val == null) ? null : parseInt(String(val), 10)
   if (key === "acquisitionDate") return (val === "" || val == null) ? null : new Date(String(val))
   if (key === "isSecurity") return Boolean(val)
-  if (["serialNumber", "publicNote", "recordNote", "securityNote"].includes(key)) {
+  if (key === "serialNumber") {
     return (val as string)?.trim() || null
   }
   return val

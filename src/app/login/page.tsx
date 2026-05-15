@@ -25,7 +25,9 @@ export default function LoginPage() {
 
     setLoading(false)
 
-    if (result?.error) {
+    if (result?.error === "AccountLocked") {
+      setError("Účet bol zablokovaný na 2 hodiny z dôvodu opakovaných neúspešných pokusov o prihlásenie.")
+    } else if (result?.error) {
       setError("Nesprávny email alebo heslo.")
     } else {
       router.push("/dashboard")

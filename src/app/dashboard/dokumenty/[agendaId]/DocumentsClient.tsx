@@ -137,14 +137,23 @@ export default function DocumentsClient({
     else { setSortKey(k); setSortDir("asc") }
   }
 
-  const filtered = useMemo(() => documents.filter(d => {
+  const searchFiltered = useMemo(() => {
+    if (!search) return documents
+    const q = search.toLowerCase()
+    return documents.filter(d =>
+      d.znacka.toLowerCase().includes(q) || d.nazov.toLowerCase().includes(q)
+    )
+  }, [documents, search])
+
+  const availableConfidentialityOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.map(d => d.confidentiality))
+    return confidentialityOptions.filter(opt => vals.has(opt.value as Confidentiality) || filterConfidentiality.has(opt.value))
+  }, [searchFiltered, filterConfidentiality])
+
+  const filtered = useMemo(() => searchFiltered.filter(d => {
     if (filterConfidentiality.size > 0 && !filterConfidentiality.has(d.confidentiality)) return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (!d.znacka.toLowerCase().includes(q) && !d.nazov.toLowerCase().includes(q)) return false
-    }
     return true
-  }), [documents, filterConfidentiality, search])
+  }), [searchFiltered, filterConfidentiality])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -286,7 +295,7 @@ export default function DocumentsClient({
             </div>
             <MultiSelect
               placeholder="Dôvernosť"
-              options={confidentialityOptions}
+              options={availableConfidentialityOptions}
               selected={filterConfidentiality}
               onChange={setFilterConfidentiality}
             />

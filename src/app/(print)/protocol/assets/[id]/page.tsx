@@ -52,7 +52,6 @@ export default async function ProtocolPage({
         functionStatus: functionStatusLabels[asset.functionStatus as FunctionStatus] ?? asset.functionStatus,
         kind: assetKindLabels[asset.kind as AssetKind] ?? asset.kind,
         acquisitionDate: asset.acquisitionDate ? asset.acquisitionDate.toISOString().split("T")[0] : null,
-        publicNote: asset.publicNote,
       }}
       assignment={
         a

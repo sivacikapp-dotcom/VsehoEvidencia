@@ -20,7 +20,7 @@ type Assignment = {
   yearOfManufacture: number | null
   usagePlace: string
   functionStatus: string
-  publicNote: string | null
+  publicNotes: { id: number; content: string; createdByName: string }[]
   kind: string
   acquisitionDate: string | null
   assignedAt: string
@@ -144,10 +144,14 @@ export default function MyAssetsClient({ assignments, userName, userId }: Props)
                     <p className="text-sm text-gray-700 dark:text-gray-300">{a.assignmentNote}</p>
                   </div>
                 )}
-                {a.publicNote && (
-                  <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 px-3 py-2">
-                    <p className="text-xs text-blue-400 dark:text-blue-400 mb-0.5">Verejná poznámka</p>
-                    <p className="text-sm text-blue-800 dark:text-blue-300">{a.publicNote}</p>
+                {a.publicNotes.length > 0 && (
+                  <div className="space-y-2">
+                    {a.publicNotes.map(note => (
+                      <div key={note.id} className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 px-3 py-2">
+                        <p className="text-xs text-blue-400 dark:text-blue-400 mb-0.5">Verejná poznámka</p>
+                        <p className="text-sm text-blue-800 dark:text-blue-300">{note.content}</p>
+                      </div>
+                    ))}
                   </div>
                 )}
                 <a href={`/protocol/assets/${a.id}`} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-1.5 mt-auto px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">

@@ -46,11 +46,8 @@ export default async function AssetsPage() {
     yearOfManufacture: isAppAdmin ? null : a.yearOfManufacture,
     allocationStatus: isAppAdmin ? (H as typeof a.allocationStatus) : a.allocationStatus,
     functionStatus: isAppAdmin ? (H as typeof a.functionStatus) : a.functionStatus,
-    publicNote: isAppAdmin ? null : a.publicNote,
     kind: isAppAdmin ? (H as typeof a.kind) : a.kind,
     acquisitionDate: isAppAdmin ? null : (a.acquisitionDate ? a.acquisitionDate.toISOString().split("T")[0] : null),
-    recordNote: null,
-    securityNote: null,
     isSecurity: isAppAdmin ? false : a.isSecurity,
     createdAt: a.createdAt.toISOString(),
     currentRecipient: isAppAdmin ? null : (a.recipientAssignments[0]?.user

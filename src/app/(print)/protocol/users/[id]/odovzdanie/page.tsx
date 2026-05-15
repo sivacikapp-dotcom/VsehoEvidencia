@@ -53,7 +53,6 @@ export default async function OdovzdanieProtocolPage({
             usagePlace: true,
             functionStatus: true,
             acquisitionDate: true,
-            publicNote: true,
           },
         },
       },
@@ -74,7 +73,6 @@ export default async function OdovzdanieProtocolPage({
     usagePlace: usagePlaceLabels[a.asset.usagePlace as UsagePlace] ?? a.asset.usagePlace,
     functionStatus: functionStatusLabels[a.asset.functionStatus as FunctionStatus] ?? a.asset.functionStatus,
     acquisitionDate: a.asset.acquisitionDate ? a.asset.acquisitionDate.toISOString().split("T")[0] : null,
-    publicNote: a.asset.publicNote,
     assignedAt: a.assignedAt.toISOString().split("T")[0],
     assignedBy: a.assignedBy,
   }))

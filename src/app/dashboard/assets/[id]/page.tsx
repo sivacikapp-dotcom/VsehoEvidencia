@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect, notFound } from "next/navigation"
 import AssetDetailClient from "./AssetDetailClient"
-import type { Role, AttachmentVisibility } from "@/generated/prisma/enums"
+import type { Role, AttachmentVisibility, AssetNoteType } from "@/generated/prisma/enums"
 import { HIDDEN } from "@/lib/appAdmin"
 
 export default async function AssetDetailPage({
@@ -18,6 +18,7 @@ export default async function AssetDetailPage({
   const isManager = roles.includes("SPRAVCA_KARIET")
   const isSecurityWorker = roles.includes("BEZPECNOSTNY_PRACOVNIK")
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isManager && !isSecurityWorker
+  const isRecipient = roles.includes("PRIJEMCA")
   const backHref = isManager || isSecurityWorker || isAppAdmin ? "/dashboard/assets" : "/dashboard/my-assets"
 
   const { id } = await params
@@ -41,10 +42,18 @@ export default async function AssetDetailPage({
           room: { select: { id: true, name: true } },
         },
       },
+      notes: {
+        orderBy: { createdAt: "asc" },
+      },
     },
   })
 
   if (!asset) notFound()
+
+  const currentUserId = parseInt(session.user.id)
+  const isCurrentRecipient = isRecipient && asset.recipientAssignments.some(
+    a => !a.returnedAt && a.user.id === currentUserId
+  )
 
   const userRoles = session.user.roles as Role[]
   const allAttachments = await prisma.assetAttachment.findMany({
@@ -70,6 +79,25 @@ export default async function AssetDetailPage({
       createdAt: a.createdAt.toISOString().split("T")[0],
     }))
 
+  const allNotes = isAppAdmin ? [] : asset.notes.filter((n) => {
+    const nt = n.noteType as AssetNoteType
+    if (nt === "PUBLIC") return true
+    if (nt === "RECORD") return isManager
+    if (nt === "SECURITY") return isSecurityWorker
+    return false
+  })
+
+  const notes = allNotes.map((n) => ({
+    id: n.id,
+    noteType: n.noteType as AssetNoteType,
+    content: n.content,
+    authorRole: n.authorRole,
+    createdById: n.createdById,
+    createdByName: n.createdByName,
+    createdAt: n.createdAt.toISOString(),
+    updatedAt: n.updatedAt.toISOString(),
+  }))
+
   const H = HIDDEN
   return (
     <AssetDetailClient
@@ -87,9 +115,6 @@ export default async function AssetDetailPage({
         functionStatus: isAppAdmin ? (H as typeof asset.functionStatus) : asset.functionStatus,
         kind: isAppAdmin ? (H as typeof asset.kind) : asset.kind,
         acquisitionDate: isAppAdmin ? null : (asset.acquisitionDate ? asset.acquisitionDate.toISOString().split("T")[0] : null),
-        publicNote: isAppAdmin ? null : asset.publicNote,
-        recordNote: !isAppAdmin && isManager ? asset.recordNote : null,
-        securityNote: !isAppAdmin && isSecurityWorker ? asset.securityNote : null,
         isSecurity: isAppAdmin ? false : asset.isSecurity,
         createdAt: asset.createdAt.toISOString().split("T")[0],
         bpVDomene: null,
@@ -128,8 +153,10 @@ export default async function AssetDetailPage({
       isManager={!isAppAdmin && isManager}
       isSecurityWorker={!isAppAdmin && isSecurityWorker}
       isAppAdmin={isAppAdmin}
-      userId={parseInt(session.user.id)}
+      isCurrentRecipient={!isAppAdmin && isCurrentRecipient}
+      userId={currentUserId}
       attachments={isAppAdmin ? [] : attachments}
+      notes={notes}
     />
   )
 }

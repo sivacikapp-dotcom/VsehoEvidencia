@@ -21,7 +21,10 @@ import {
   Trash2,
   Upload,
   AlertTriangle,
+  Plus,
+  MessageSquare,
 } from "lucide-react"
+import type { AssetNoteType } from "@/generated/prisma/enums"
 import {
   assetTypeLabels,
   brandLabels,
@@ -40,7 +43,7 @@ import type {
   FunctionStatus,
   AssetKind,
 } from "@/generated/prisma/enums"
-import { updateSecurityNote, updateBpFields, deleteAssetAttachment, updateAttachmentVisibility } from "../actions"
+import { updateBpFields, deleteAssetAttachment, updateAttachmentVisibility } from "../actions"
 import { useTablePrefs, type ColDef } from "@/lib/useTablePrefs"
 import { useColResize } from "@/lib/useColResize"
 import ColumnManager from "@/components/ColumnManager"
@@ -83,6 +86,17 @@ type RoomEntry = {
   isCurrent: boolean
 }
 
+type NoteEntry = {
+  id: number
+  noteType: AssetNoteType
+  content: string
+  authorRole: string
+  createdById: number
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+}
+
 interface Props {
   backHref: string
   asset: {
@@ -98,9 +112,6 @@ interface Props {
     functionStatus: FunctionStatus
     kind: string
     acquisitionDate: string | null
-    publicNote: string | null
-    recordNote: string | null
-    securityNote: string | null
     isSecurity: boolean
     createdAt: string
     bpVDomene: boolean | null
@@ -116,9 +127,11 @@ interface Props {
   recipientHistory: RecipientEntry[]
   roomHistory: RoomEntry[]
   attachments: AttachmentEntry[]
+  notes: NoteEntry[]
   isManager: boolean
   isSecurityWorker: boolean
   isAppAdmin?: boolean
+  isCurrentRecipient: boolean
   userId: number
 }
 
@@ -135,15 +148,6 @@ function InfoRow({ icon: Icon, label, value }: { icon: React.ElementType; label:
         <p className="text-xs text-gray-400 dark:text-gray-500">{label}</p>
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{value}</p>
       </div>
-    </div>
-  )
-}
-
-function NoteCard({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return (
-    <div className={`rounded-lg border px-3 py-2 ${accent}`}>
-      <p className="text-xs font-semibold uppercase tracking-wide mb-0.5 opacity-60">{label}</p>
-      <p className="text-sm">{value}</p>
     </div>
   )
 }
@@ -370,9 +374,6 @@ type AssetForEdit = {
   functionStatus: FunctionStatus
   kind: string
   acquisitionDate: string | null
-  publicNote: string | null
-  recordNote: string | null
-  securityNote: string | null
   isSecurity: boolean
 }
 
@@ -388,24 +389,20 @@ type AssetEditForm = {
   kind: string
   acquisitionDate: string
   functionStatus: string
-  publicNote: string
-  recordNote: string
-  securityNote: string
   isSecurity: boolean
 }
 
 const ALL_FORM_KEYS = [
   "type", "name", "brand", "serialNumber", "usagePlace",
   "yearOfManufacture", "kind", "acquisitionDate", "functionStatus",
-  "publicNote", "recordNote", "securityNote", "isSecurity",
+  "isSecurity",
 ] as const
 
 const EDIT_FIELD_LABELS: Record<string, string> = {
   type: "Typ", name: "Názov", brand: "Značka", serialNumber: "Výrobné číslo",
   usagePlace: "Miesto použitia", yearOfManufacture: "Rok výroby", kind: "Druh majetku",
   acquisitionDate: "Dátum nadobudnutia", functionStatus: "Stav funkčnosti",
-  publicNote: "Verejná poznámka", recordNote: "Evidenčná poznámka",
-  securityNote: "BP Poznámka", isSecurity: "Bezpečnostný",
+  isSecurity: "Bezpečnostný",
 }
 
 function assetToForm(a: AssetForEdit): AssetEditForm {
@@ -417,9 +414,6 @@ function assetToForm(a: AssetForEdit): AssetEditForm {
     kind: a.kind,
     acquisitionDate: a.acquisitionDate ?? "",
     functionStatus: a.functionStatus,
-    publicNote: a.publicNote ?? "",
-    recordNote: a.recordNote ?? "",
-    securityNote: a.securityNote ?? "",
     isSecurity: a.isSecurity,
   }
 }
@@ -439,9 +433,6 @@ function dbToForm(db: Record<string, unknown>): AssetEditForm {
     kind: String(db.kind ?? ""),
     acquisitionDate,
     functionStatus: String(db.functionStatus ?? ""),
-    publicNote: db.publicNote ? String(db.publicNote) : "",
-    recordNote: db.recordNote ? String(db.recordNote) : "",
-    securityNote: db.securityNote ? String(db.securityNote) : "",
     isSecurity: Boolean(db.isSecurity),
   }
 }
@@ -694,20 +685,6 @@ function EditAssetModal({ asset, onClose }: { asset: AssetForEdit; onClose: () =
                 </div>
               </div>
 
-              <div>
-                <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Poznámky</p>
-                <div className="space-y-3">
-                  <Field label="Verejná poznámka">
-                    <textarea name="publicNote" rows={2} value={form.publicNote} onChange={e => upd("publicNote", e.target.value)} placeholder="Viditeľná pre všetkých" maxLength={1000} className={inputCls} />
-                  </Field>
-                  <Field label="Evidenčná poznámka">
-                    <textarea name="recordNote" rows={2} value={form.recordNote} onChange={e => upd("recordNote", e.target.value)} placeholder="Interná poznámka (nie pre BP)" maxLength={1000} className={inputCls} />
-                  </Field>
-                  <Field label="BP Poznámka">
-                    <textarea name="securityNote" rows={2} value={form.securityNote} onChange={e => upd("securityNote", e.target.value)} placeholder="Pre bezpečnostného pracovníka" maxLength={2000} className={inputCls} />
-                  </Field>
-                </div>
-              </div>
             </div>
 
             <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
@@ -849,50 +826,189 @@ function EditBpFieldsModal({ asset, onClose }: { asset: BpAsset; onClose: () => 
   )
 }
 
-function EditSecurityNoteModal({ assetId, currentNote, onClose }: { assetId: number; currentNote: string | null; onClose: () => void }) {
-  const router = useRouter()
-  const [note, setNote] = useState(currentNote ?? "")
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState("")
+// ── Notes Panel ────────────────────────────────────────────────────────────
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setPending(true); setError("")
-    const result = await updateSecurityNote(assetId, note)
-    setPending(false)
-    if (result.error) setError(result.error)
-    else { router.refresh(); onClose() }
+const NOTE_TYPE_CONFIG: Record<AssetNoteType, { label: string; accent: string; authorRole: string }> = {
+  PUBLIC: {
+    label: "Verejná poznámka",
+    accent: "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-700 dark:text-gray-300",
+    authorRole: "PUBLIC",
+  },
+  RECORD: {
+    label: "Evidenčná poznámka",
+    accent: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300",
+    authorRole: "SPRAVCA_KARIET",
+  },
+  SECURITY: {
+    label: "BP poznámka",
+    accent: "border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300",
+    authorRole: "BEZPECNOSTNY_PRACOVNIK",
+  },
+}
+
+function fmtNoteDate(iso: string): string {
+  const d = new Date(iso)
+  return d.toLocaleString("sk-SK", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+}
+
+function NotesSection({
+  assetId,
+  notes,
+  noteType,
+  canAdd,
+  canEditNote,
+}: {
+  assetId: number
+  notes: NoteEntry[]
+  noteType: AssetNoteType
+  canAdd: boolean
+  canEditNote: (note: NoteEntry) => boolean
+}) {
+  const router = useRouter()
+  const cfg = NOTE_TYPE_CONFIG[noteType]
+  const [adding, setAdding] = useState(false)
+  const [addText, setAddText] = useState("")
+  const [addPending, setAddPending] = useState(false)
+  const [addError, setAddError] = useState("")
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editText, setEditText] = useState("")
+  const [editPending, setEditPending] = useState(false)
+  const [editError, setEditError] = useState("")
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+
+  async function handleAdd() {
+    if (!addText.trim()) return
+    setAddPending(true); setAddError("")
+    try {
+      const res = await fetch(`/api/assets/${assetId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ noteType, content: addText }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setAddError(data.error ?? "Chyba"); return }
+      setAddText(""); setAdding(false); router.refresh()
+    } catch { setAddError("Nastala chyba.") }
+    finally { setAddPending(false) }
+  }
+
+  function startEdit(note: NoteEntry) {
+    setEditingId(note.id); setEditText(note.content); setEditError("")
+  }
+
+  async function handleEdit(noteId: number) {
+    if (!editText.trim()) return
+    setEditPending(true); setEditError("")
+    try {
+      const res = await fetch(`/api/assets/notes/${noteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: editText }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEditError(data.error ?? "Chyba"); return }
+      setEditingId(null); router.refresh()
+    } catch { setEditError("Nastala chyba.") }
+    finally { setEditPending(false) }
+  }
+
+  async function handleDelete(noteId: number) {
+    setDeletingId(noteId)
+    try {
+      await fetch(`/api/assets/notes/${noteId}`, { method: "DELETE" })
+      router.refresh()
+    } catch {}
+    finally { setDeletingId(null) }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Bezpečnostná poznámka</h2>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} /></button>
+    <div className="space-y-2">
+      {notes.length === 0 && !adding && (
+        <p className="text-xs text-gray-400 dark:text-gray-500 italic">Žiadne poznámky</p>
+      )}
+      {notes.map((note) => (
+        <div key={note.id} className={`rounded-lg border px-3 py-2 ${cfg.accent}`}>
+          {editingId === note.id ? (
+            <div className="space-y-2">
+              <textarea
+                value={editText}
+                onChange={e => setEditText(e.target.value)}
+                rows={3}
+                maxLength={2000}
+                autoFocus
+                className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {editError && <p className="text-xs text-red-600 dark:text-red-400">{editError}</p>}
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setEditingId(null)} className="px-3 py-1 text-xs text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Zrušiť</button>
+                <button onClick={() => handleEdit(note.id)} disabled={editPending || !editText.trim()} className="flex items-center gap-1 px-3 py-1 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                  {editPending && <Loader2 size={11} className="animate-spin" />}
+                  {editPending ? "Ukladám..." : "Uložiť"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm whitespace-pre-wrap">{note.content}</p>
+              <div className="flex items-center justify-between mt-1.5 gap-2">
+                <p className="text-[11px] opacity-60">
+                  {note.createdByName} · {fmtNoteDate(note.createdAt)}
+                  {note.updatedAt !== note.createdAt && " (upravené)"}
+                </p>
+                {canEditNote(note) && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => startEdit(note)}
+                      className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                      title="Upraviť"
+                    >
+                      <Pencil size={11} />
+                    </button>
+                    <button
+                      onClick={() => handleDelete(note.id)}
+                      disabled={deletingId === note.id}
+                      className="p-1 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors disabled:opacity-40"
+                      title="Zmazať"
+                    >
+                      {deletingId === note.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
-        <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5">
-            <textarea
-              value={note}
-              onChange={e => setNote(e.target.value)}
-              rows={4}
-              placeholder="Bezpečnostná poznámka..."
-              maxLength={2000}
-              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
-            {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</p>}
-          </div>
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Zrušiť</button>
-            <button type="submit" disabled={pending} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-              {pending && <Loader2 size={14} className="animate-spin" />}
-              {pending ? "Ukladám..." : "Uložiť"}
+      ))}
+
+      {adding ? (
+        <div className="space-y-2">
+          <textarea
+            value={addText}
+            onChange={e => setAddText(e.target.value)}
+            rows={3}
+            maxLength={2000}
+            autoFocus
+            placeholder="Obsah poznámky..."
+            className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+          {addError && <p className="text-xs text-red-600 dark:text-red-400">{addError}</p>}
+          <div className="flex justify-end gap-2">
+            <button onClick={() => { setAdding(false); setAddText(""); setAddError("") }} className="px-3 py-1 text-xs text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Zrušiť</button>
+            <button onClick={handleAdd} disabled={addPending || !addText.trim()} className="flex items-center gap-1 px-3 py-1 text-xs text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {addPending && <Loader2 size={11} className="animate-spin" />}
+              {addPending ? "Ukladám..." : "Pridať"}
             </button>
           </div>
-        </form>
-      </div>
+        </div>
+      ) : canAdd && (
+        <button
+          onClick={() => setAdding(true)}
+          className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+        >
+          <Plus size={12} />
+          Pridať poznámku
+        </button>
+      )}
     </div>
   )
 }
@@ -1236,16 +1352,21 @@ export default function AssetDetailClient({
   recipientHistory,
   roomHistory,
   attachments,
+  notes,
   isManager,
   isSecurityWorker,
   isAppAdmin = false,
+  isCurrentRecipient,
   userId,
 }: Props) {
   const [tab, setTab] = useState<"recipients" | "rooms" | "attachments">("recipients")
   const canUpload = !isAppAdmin && (isManager || isSecurityWorker)
   const [showEdit, setShowEdit] = useState(false)
-  const [showSecurityEdit, setShowSecurityEdit] = useState(false)
   const [showBpEdit, setShowBpEdit] = useState(false)
+
+  const publicNotes = notes.filter(n => n.noteType === "PUBLIC")
+  const recordNotes = notes.filter(n => n.noteType === "RECORD")
+  const securityNotes = notes.filter(n => n.noteType === "SECURITY")
 
   const hasBpFields = BP_TYPES.includes(asset.type as typeof BP_TYPES[number])
 
@@ -1285,15 +1406,6 @@ export default function AssetDetailClient({
                 >
                   <Pencil size={11} />
                   Upraviť
-                </button>
-              )}
-              {isSecurityWorker && (
-                <button
-                  onClick={() => setShowSecurityEdit(true)}
-                  className="flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-md transition-colors ml-1"
-                >
-                  <Pencil size={11} />
-                  BP Poznámka
                 </button>
               )}
               {isSecurityWorker && hasBpFields && (
@@ -1465,31 +1577,56 @@ export default function AssetDetailClient({
         )}
 
         {/* Notes */}
-        {(asset.publicNote || asset.recordNote || asset.securityNote) && (
-          <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700 space-y-2">
-            {asset.publicNote && (
-              <NoteCard
-                label="Verejná poznámka"
-                value={asset.publicNote}
-                accent="border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800"
-              />
-            )}
-            {asset.recordNote && isManager && (
-              <NoteCard
-                label="Evidenčná poznámka"
-                value={asset.recordNote}
-                accent="border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20"
-              />
-            )}
-            {isSecurityWorker && asset.securityNote && (
-              <div className={`rounded-lg border px-3 py-2 border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 bg-red-50 dark:bg-red-900/20`}>
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  <ShieldAlert size={12} className="opacity-60" />
-                  <p className="text-xs font-semibold uppercase tracking-wide opacity-60">BP poznámka</p>
-                </div>
-                <p className="text-sm">{asset.securityNote}</p>
+        {!isAppAdmin && (
+          <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700 space-y-4">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={14} className="text-gray-400" />
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Poznámky</p>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Verejná poznámka</p>
+                <NotesSection
+                  assetId={asset.id}
+                  notes={publicNotes}
+                  noteType="PUBLIC"
+                  canAdd={isManager || isSecurityWorker || isCurrentRecipient}
+                  canEditNote={(note) => {
+                    if (note.authorRole === "SPRAVCA_KARIET") return isManager
+                    if (note.authorRole === "BEZPECNOSTNY_PRACOVNIK") return isSecurityWorker
+                    if (note.authorRole === "PRIJEMCA") return note.createdById === userId
+                    return false
+                  }}
+                />
               </div>
-            )}
+              {isManager && (
+                <div>
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400 mb-2">Evidenčná poznámka</p>
+                  <NotesSection
+                    assetId={asset.id}
+                    notes={recordNotes}
+                    noteType="RECORD"
+                    canAdd={true}
+                    canEditNote={(note) => note.authorRole === "SPRAVCA_KARIET" && isManager}
+                  />
+                </div>
+              )}
+              {isSecurityWorker && (
+                <div>
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-2 flex items-center gap-1">
+                    <ShieldAlert size={12} />
+                    BP poznámka
+                  </p>
+                  <NotesSection
+                    assetId={asset.id}
+                    notes={securityNotes}
+                    noteType="SECURITY"
+                    canAdd={true}
+                    canEditNote={(note) => note.authorRole === "BEZPECNOSTNY_PRACOVNIK" && isSecurityWorker}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1566,9 +1703,6 @@ export default function AssetDetailClient({
 
       {showEdit && (
         <EditAssetModal asset={asset} onClose={() => setShowEdit(false)} />
-      )}
-      {showSecurityEdit && (
-        <EditSecurityNoteModal assetId={asset.id} currentNote={asset.securityNote} onClose={() => setShowSecurityEdit(false)} />
       )}
       {showBpEdit && (
         <EditBpFieldsModal asset={asset} onClose={() => setShowBpEdit(false)} />

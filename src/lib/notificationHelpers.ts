@@ -312,18 +312,42 @@ export async function notifyExpenseReportRejected(
   orderNumber: string,
   ownerId: number,
   rejectorName: string,
-  note: string
+  note: string,
+  rejectorUserId?: number
 ) {
-  await prisma.notification.create({
-    data: {
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerId },
+    select: { supervisorId: true, firstName: true, lastName: true },
+  })
+
+  const ownerName = owner ? `${owner.firstName} ${owner.lastName}` : ""
+
+  const notifications: {
+    userId: number; type: "EXPENSE_REPORT_REJECTED"; title: string
+    message: string; travelOrderId: number; mustAcknowledge: boolean
+  }[] = [
+    {
       userId: ownerId,
-      type: "EXPENSE_REPORT_REJECTED",
+      type: "EXPENSE_REPORT_REJECTED" as const,
       title: "Vyúčtovanie zamietnuté",
-      message: `Vyúčtovanie k príkazu ${orderNumber} bolo zamietnuté používateľom ${rejectorName}.\nDôvod: ${note}`,
+      message: `Vyúčtovanie k vášmu cestnému príkazu ${orderNumber} bolo zamietnuté používateľom ${rejectorName}.\nDôvod: ${note}`,
       travelOrderId,
       mustAcknowledge: false,
     },
-  })
+  ]
+
+  if (owner?.supervisorId && owner.supervisorId !== rejectorUserId) {
+    notifications.push({
+      userId: owner.supervisorId,
+      type: "EXPENSE_REPORT_REJECTED" as const,
+      title: "Vyúčtovanie zamietnuté",
+      message: `Vyúčtovanie k cestnému príkazu ${orderNumber} (${ownerName}) bolo zamietnuté používateľom ${rejectorName}.\nDôvod: ${note}`,
+      travelOrderId,
+      mustAcknowledge: false,
+    })
+  }
+
+  await prisma.notification.createMany({ data: notifications })
 }
 
 export async function notifyAssetChanged(

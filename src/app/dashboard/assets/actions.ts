@@ -27,7 +27,6 @@ const FIELD_LABELS: Record<string, string> = {
   kind: "Druh majetku",
   acquisitionDate: "Dátum obstarania",
   functionStatus: "Stav funkčnosti",
-  publicNote: "Verejná poznámka",
   isSecurity: "Bezpečnostný majetok",
 }
 
@@ -41,7 +40,6 @@ type AssetSnapshot = {
   kind: AssetKind
   acquisitionDate: Date | null
   functionStatus: FunctionStatus
-  publicNote: string | null
   isSecurity: boolean
 }
 
@@ -120,9 +118,6 @@ export async function createAsset(formData: FormData): Promise<Result> {
         yearOfManufacture: year,
         kind: formData.get("kind") as AssetKind,
         acquisitionDate,
-        publicNote: (formData.get("publicNote") as string)?.trim() || null,
-        recordNote: (formData.get("recordNote") as string)?.trim() || null,
-        securityNote: null,
         isSecurity: formData.get("isSecurity") === "on",
       },
     })
@@ -266,7 +261,7 @@ export async function updateAsset(
       select: {
         type: true, name: true, brand: true, serialNumber: true,
         usagePlace: true, yearOfManufacture: true, kind: true,
-        acquisitionDate: true, functionStatus: true, publicNote: true, isSecurity: true,
+        acquisitionDate: true, functionStatus: true, isSecurity: true,
       },
     })
     if (!oldAsset) return { error: "Majetok nebol nájdený." }
@@ -283,9 +278,6 @@ export async function updateAsset(
         kind: formData.get("kind") as AssetKind,
         acquisitionDate,
         functionStatus: formData.get("functionStatus") as FunctionStatus,
-        publicNote: (formData.get("publicNote") as string)?.trim() || null,
-        recordNote: (formData.get("recordNote") as string)?.trim() || null,
-        securityNote: (formData.get("securityNote") as string)?.trim() || null,
         isSecurity: formData.get("isSecurity") === "on",
       },
     })
@@ -297,7 +289,7 @@ export async function updateAsset(
       userId: actorId, userEmail: session.user.email, userName: session.user.name,
       action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: updated.name,
       oldData: oldAsset as Record<string, unknown>,
-      newData: { type: updated.type, name: updated.name, brand: updated.brand, serialNumber: updated.serialNumber, usagePlace: updated.usagePlace, yearOfManufacture: updated.yearOfManufacture, kind: updated.kind, functionStatus: updated.functionStatus, publicNote: updated.publicNote, isSecurity: updated.isSecurity },
+      newData: { type: updated.type, name: updated.name, brand: updated.brand, serialNumber: updated.serialNumber, usagePlace: updated.usagePlace, yearOfManufacture: updated.yearOfManufacture, kind: updated.kind, functionStatus: updated.functionStatus, isSecurity: updated.isSecurity },
     })
     revalidatePath(`/dashboard/assets/${assetId}`)
     revalidatePath("/dashboard/assets")
@@ -444,33 +436,6 @@ export async function updateBpFields(
     const msg = e instanceof Error ? e.message : String(e)
     console.error("[updateBpFields]", e)
     return { error: `Chyba: ${msg}` }
-  }
-}
-
-export async function updateSecurityNote(
-  assetId: number,
-  note: string
-): Promise<Result> {
-  const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
-    return { error: "Nemáte oprávnenie." }
-  }
-  try {
-    await prisma.asset.update({
-      where: { id: assetId },
-      data: { securityNote: note.trim() || null },
-    })
-    await createAuditLog({
-      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
-      action: "UPDATE", entityType: "ASSET", entityId: assetId, entityLabel: null,
-      newData: { securityNote: note.trim() || null },
-    })
-    revalidatePath(`/dashboard/assets/${assetId}`)
-    revalidatePath("/dashboard/assets")
-    return { success: true }
-  } catch (e) {
-    console.error("[updateSecurityNote]", e)
-    return { error: "Nastala chyba pri ukladaní." }
   }
 }
 

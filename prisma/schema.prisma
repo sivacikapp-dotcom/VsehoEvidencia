@@ -132,6 +132,27 @@ enum NotificationType {
   EXPENSE_REPORT_FOR_MANAGER
   EXPENSE_REPORT_APPROVED
   EXPENSE_REPORT_REJECTED
+  ACCOUNT_LOCKED
+  SUSPICIOUS_LOGIN
+}
+
+enum AssetNoteType {
+  PUBLIC
+  RECORD
+  SECURITY
+}
+
+model AssetNote {
+  id            Int           @id @default(autoincrement())
+  assetId       Int
+  asset         Asset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  noteType      AssetNoteType
+  content       String        @db.VarChar(2000)
+  authorRole    String
+  createdById   Int
+  createdByName String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 }
 
 enum AttachmentVisibility {
@@ -161,17 +182,15 @@ model Asset {
   yearOfManufacture Int?
   allocationStatus  AllocationStatus @default(Neprideleny_Volny)
   functionStatus    FunctionStatus   @default(Funkcny)
-  publicNote        String?
   kind              AssetKind
   acquisitionDate   DateTime?
-  recordNote        String?
-  securityNote      String?
   isSecurity        Boolean          @default(false)
 
   recipientAssignments AssetRecipientAssignment[]
   roomAssignments      AssetRoomAssignment[]
   notifications        Notification[]
   attachments          AssetAttachment[]
+  notes                AssetNote[]
 
   // BP fields – Notebook
   bpVDomene          Boolean?
@@ -223,6 +242,9 @@ model User {
   managedTravelOrders    TravelOrder[]    @relation("TravelOrderManager")
   expenseReportAttachments ExpenseReportAttachment[]
   travelRateConfigs      TravelRateConfig[]
+
+  loginAttempts  Int       @default(0)
+  lockedUntil    DateTime?
 }
 
 model AssetRecipientAssignment {

@@ -33,11 +33,8 @@ type Asset = {
   yearOfManufacture: number | null
   allocationStatus: AllocationStatus
   functionStatus: FunctionStatus
-  publicNote: string | null
   kind: string
   acquisitionDate: string | null
-  recordNote: string | null
-  securityNote: string | null
   isSecurity: boolean
   currentRecipient: { id: number; name: string } | null
   currentRoom: { id: number; name: string } | null
@@ -162,8 +159,6 @@ const MANAGER_COLS: ColDef[] = [
   { key: "acquisitionDate", label: "Nadobudnutie", defaultWidth: 120, sortable: true },
   { key: "assigned", label: "Priradené", defaultWidth: 160, sortable: true },
   { key: "isSecurity", label: "Bezpečnostný", defaultWidth: 120 },
-  { key: "publicNote", label: "Verejná pozn.", defaultWidth: 160 },
-  { key: "recordNote", label: "Evid. pozn.", defaultWidth: 160 },
 ]
 
 const MANAGER_COLS_WITH_BP: ColDef[] = [
@@ -181,8 +176,6 @@ const MANAGER_COLS_WITH_BP: ColDef[] = [
   { key: "acquisitionDate", label: "Nadobudnutie", defaultWidth: 120, sortable: true },
   { key: "assigned", label: "Priradené", defaultWidth: 160, sortable: true },
   { key: "isSecurity", label: "Bezpečnostný", defaultWidth: 120 },
-  { key: "publicNote", label: "Verejná pozn.", defaultWidth: 160 },
-  { key: "recordNote", label: "Evid. pozn.", defaultWidth: 160 },
   BP_INFO_COL,
 ]
 
@@ -192,7 +185,6 @@ const SECURITY_COLS: ColDef[] = [
   { key: "type", label: "Typ", fixed: true, defaultWidth: 110 },
   { key: "name", label: "Názov", fixed: true, defaultWidth: 220 },
   { key: "serialNumber", label: "Výrobné číslo", defaultWidth: 150 },
-  { key: "securityNote", label: "BP Poznámka", defaultWidth: 200 },
   BP_INFO_COL,
 ]
 
@@ -231,17 +223,59 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
     else { setSortKey(key); setSortDir("asc") }
   }
 
-  const filtered = useMemo(() => assets.filter(a => {
+  const searchFiltered = useMemo(() => {
+    if (!search) return assets
+    const q = search.toLowerCase()
+    return assets.filter(a =>
+      a.name.toLowerCase().includes(q) ||
+      (a.serialNumber?.toLowerCase().includes(q) ?? false) ||
+      a.id.toString().includes(q)
+    )
+  }, [assets, search])
+
+  const availableTypeOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+    ).map(a => a.type))
+    return typeOptions.filter(opt => vals.has(opt.value) || filterTypes.has(opt.value))
+  }, [searchFiltered, filterBrands, filterPlaces, filterStatuses, filterTypes])
+
+  const availableBrandOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterTypes.size === 0 || filterTypes.has(a.type)) &&
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+    ).map(a => a.brand))
+    return brandOptions.filter(opt => vals.has(opt.value) || filterBrands.has(opt.value))
+  }, [searchFiltered, filterTypes, filterPlaces, filterStatuses, filterBrands])
+
+  const availablePlaceOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterTypes.size === 0 || filterTypes.has(a.type)) &&
+      (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+    ).map(a => a.usagePlace))
+    return placeOptions.filter(opt => vals.has(opt.value) || filterPlaces.has(opt.value))
+  }, [searchFiltered, filterTypes, filterBrands, filterStatuses, filterPlaces])
+
+  const availableStatusOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterTypes.size === 0 || filterTypes.has(a.type)) &&
+      (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace))
+    ).map(a => a.allocationStatus))
+    return statusOptions.filter(opt => vals.has(opt.value) || filterStatuses.has(opt.value))
+  }, [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses])
+
+  const filtered = useMemo(() => searchFiltered.filter(a => {
     if (filterTypes.size > 0 && !filterTypes.has(a.type)) return false
     if (filterBrands.size > 0 && !filterBrands.has(a.brand)) return false
     if (filterPlaces.size > 0 && !filterPlaces.has(a.usagePlace)) return false
     if (filterStatuses.size > 0 && !filterStatuses.has(a.allocationStatus)) return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (!a.name.toLowerCase().includes(q) && !(a.serialNumber?.toLowerCase().includes(q)) && !a.id.toString().includes(q)) return false
-    }
     return true
-  }), [assets, filterTypes, filterBrands, filterPlaces, filterStatuses, search])
+  }), [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -297,9 +331,6 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
       case "isSecurity": return a.isSecurity
         ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">Bezpečnostný</span>
         : <span className="text-gray-300 dark:text-gray-600">—</span>
-      case "publicNote": return a.publicNote ? <span className="truncate block text-gray-500 dark:text-gray-400" title={a.publicNote}>{a.publicNote}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>
-      case "recordNote": return a.recordNote ? <span className="truncate block text-gray-500 dark:text-gray-400" title={a.recordNote}>{a.recordNote}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>
-      case "securityNote": return a.securityNote ? <span className="text-gray-700 dark:text-gray-300">{a.securityNote}</span> : <span className="text-gray-300 dark:text-gray-600 italic">—</span>
       case "bpInfo": {
         const dash = <span className="text-gray-300 dark:text-gray-600">—</span>
         if (a.type === "Notebook") {
@@ -490,10 +521,10 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
           <input type="text" placeholder="Hľadať (ID, názov, číslo)..." value={search} onChange={e => setSearch(e.target.value)} className={`pl-8 pr-3 py-1.5 text-sm w-56 ${inputCls}`} />
         </div>
         <div className="h-5 w-px bg-gray-200 dark:bg-gray-700" />
-        <MultiSelect placeholder="Typ" options={typeOptions} selected={filterTypes} onChange={setFilterTypes} />
-        <MultiSelect placeholder="Značka" options={brandOptions} selected={filterBrands} onChange={setFilterBrands} />
-        <MultiSelect placeholder="Miesto" options={placeOptions} selected={filterPlaces} onChange={setFilterPlaces} />
-        <MultiSelect placeholder="Pridelenie" options={statusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
+        <MultiSelect placeholder="Typ" options={availableTypeOptions} selected={filterTypes} onChange={setFilterTypes} />
+        <MultiSelect placeholder="Značka" options={availableBrandOptions} selected={filterBrands} onChange={setFilterBrands} />
+        <MultiSelect placeholder="Miesto" options={availablePlaceOptions} selected={filterPlaces} onChange={setFilterPlaces} />
+        <MultiSelect placeholder="Pridelenie" options={availableStatusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
         {(activeFiltersCount > 0 || search) && (
           <button type="button" onClick={clearAllFilters} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
             <X size={12} />Zrušiť filtre

@@ -11,7 +11,6 @@ import path from "path"
 import { createAuditLog } from "@/lib/auditLog"
 import {
   notifyTravelOrderSubmitted,
-  notifyTravelOrderForManager,
   notifyTravelOrderApproved,
   notifyTravelOrderRejected,
   notifyExpenseReportSubmitted,
@@ -26,7 +25,9 @@ async function getSession(opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
   const user = session.user as { id: string; name: string; roles: string[] }
-  if (opts.mutation && user.roles.includes("SPRAVCA_APLIKACIE")) {
+  if (opts.mutation && user.roles.includes("SPRAVCA_APLIKACIE")
+    && !user.roles.includes("NADRIADENY")
+    && !user.roles.includes("SPRAVCA_PC")) {
     throw new Error("Rola Správca aplikácie nemá oprávnenie na úpravy.")
   }
   return user
@@ -248,23 +249,18 @@ export async function supervisorApproveTravelOrder(id: number) {
   await prisma.travelOrder.update({
     where: { id },
     data: {
-      status: "PENDING_MANAGER",
+      status: "APPROVED",
       supervisorApprovedAt: new Date(),
       supervisorRejectedAt: null,
     },
   })
 
   await dismissPendingNotification(uid(user), id, "TRAVEL_ORDER_SUBMITTED")
-  await notifyTravelOrderForManager(
-    id,
-    order.orderNumber,
-    `${order.user.firstName} ${order.user.lastName}`,
-    uid(user)
-  )
+  await notifyTravelOrderApproved(id, order.orderNumber, order.user.id)
   await createAuditLog({
     userId: uid(user), userEmail: null, userName: user.name,
     action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
-    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "PENDING_MANAGER" },
+    oldData: { status: "PENDING_SUPERVISOR" }, newData: { status: "APPROVED" },
   })
   revalidatePath("/dashboard")
   revalidatePath("/dashboard/pracovne-cesty")
@@ -595,7 +591,7 @@ export async function supervisorRejectExpenseReport(travelOrderId: number, note:
   })
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_SUBMITTED")
-  await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note)
+  await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note, uid(user))
   await createAuditLog({
     userId: uid(user), userEmail: null, userName: user.name,
     action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,
@@ -663,7 +659,7 @@ export async function managerRejectExpenseReport(travelOrderId: number, note: st
   })
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_FOR_MANAGER")
-  await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note)
+  await notifyExpenseReportRejected(travelOrderId, order.orderNumber, order.user.id, user.name, note, uid(user))
   await createAuditLog({
     userId: uid(user), userEmail: null, userName: user.name,
     action: "UPDATE", entityType: "EXPENSE_REPORT", entityId: travelOrderId, entityLabel: order.orderNumber,

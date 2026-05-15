@@ -24,7 +24,6 @@ interface Asset {
   usagePlace: string
   functionStatus: string
   acquisitionDate: string | null
-  publicNote: string | null
   assignedAt: string
   assignedBy: string
 }
@@ -161,7 +160,6 @@ export default function OdovzdanieProtocolPrint({ user, assets, generatedAt }: P
                       <Cell value={a.type} />
                       <td className="px-3 py-2 text-sm text-gray-900 border-b border-gray-100">
                         <div className="font-medium">{a.name}</div>
-                        {a.publicNote && <div className="text-xs text-gray-400 mt-0.5">{a.publicNote}</div>}
                       </td>
                       <Cell value={a.brand} />
                       <td className="px-3 py-2 text-sm text-gray-900 border-b border-gray-100">

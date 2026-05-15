@@ -95,20 +95,36 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
     else { setSortKey(k); setSortDir("asc") }
   }
 
-  const filtered = useMemo(() => orders.filter(o => {
+  const searchFiltered = useMemo(() => {
+    if (!search) return orders
+    const q = search.toLowerCase()
+    return orders.filter(o =>
+      o.orderNumber.toLowerCase().includes(q) ||
+      o.purpose.toLowerCase().includes(q) ||
+      o.destination.toLowerCase().includes(q) ||
+      `${o.user.firstName} ${o.user.lastName}`.toLowerCase().includes(q)
+    )
+  }, [orders, search])
+
+  const availableTypeOptions = useMemo(() => {
+    const vals = new Set(
+      searchFiltered.filter(o => filterStatuses.size === 0 || filterStatuses.has(o.status)).map(o => o.type)
+    )
+    return typeOptions.filter(opt => vals.has(opt.value as TravelOrderType) || filterTypes.has(opt.value))
+  }, [searchFiltered, filterStatuses, filterTypes])
+
+  const availableStatusOptions = useMemo(() => {
+    const vals = new Set(
+      searchFiltered.filter(o => filterTypes.size === 0 || filterTypes.has(o.type)).map(o => o.status)
+    )
+    return statusOptions.filter(opt => vals.has(opt.value as TravelOrderStatus) || filterStatuses.has(opt.value))
+  }, [searchFiltered, filterTypes, filterStatuses])
+
+  const filtered = useMemo(() => searchFiltered.filter(o => {
     if (filterTypes.size > 0 && !filterTypes.has(o.type)) return false
     if (filterStatuses.size > 0 && !filterStatuses.has(o.status)) return false
-    if (search) {
-      const q = search.toLowerCase()
-      if (
-        !o.orderNumber.toLowerCase().includes(q) &&
-        !o.purpose.toLowerCase().includes(q) &&
-        !o.destination.toLowerCase().includes(q) &&
-        !`${o.user.firstName} ${o.user.lastName}`.toLowerCase().includes(q)
-      ) return false
-    }
     return true
-  }), [orders, filterTypes, filterStatuses, search])
+  }), [searchFiltered, filterTypes, filterStatuses])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -180,8 +196,8 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
             className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56"
           />
         </div>
-        <MultiSelect placeholder="Typ" options={typeOptions} selected={filterTypes} onChange={setFilterTypes} />
-        <MultiSelect placeholder="Stav" options={statusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
+        <MultiSelect placeholder="Typ" options={availableTypeOptions} selected={filterTypes} onChange={setFilterTypes} />
+        <MultiSelect placeholder="Stav" options={availableStatusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
         {hasActiveFilters && (
           <button
             onClick={clearAllFilters}

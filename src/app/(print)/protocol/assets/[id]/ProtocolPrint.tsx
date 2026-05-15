@@ -14,7 +14,6 @@ interface Props {
     functionStatus: string
     kind: string
     acquisitionDate: string | null
-    publicNote: string | null
   }
   assignment: {
     recipientName: string
@@ -99,9 +98,6 @@ export default function ProtocolPrint({ asset, assignment, generatedAt }: Props)
                 <Row label="Miesto použitia" value={asset.usagePlace} />
                 <Row label="Funkčný stav" value={asset.functionStatus} />
                 <Row label="Dátum nadobudnutia" value={asset.acquisitionDate} />
-                {asset.publicNote && (
-                  <Row label="Poznámka" value={asset.publicNote} />
-                )}
               </tbody>
             </table>
           </div>

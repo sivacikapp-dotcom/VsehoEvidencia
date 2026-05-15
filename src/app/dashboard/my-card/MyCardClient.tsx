@@ -20,7 +20,7 @@ type Assignment = {
   yearOfManufacture: number | null
   usagePlace: string
   functionStatus: string
-  publicNote: string | null
+  publicNotes: { id: number; content: string; createdByName: string }[]
   kind: string
   acquisitionDate: string | null
   assignedAt: string
