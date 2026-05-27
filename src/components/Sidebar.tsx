@@ -16,6 +16,11 @@ import {
   ScrollText,
   CheckCheck,
   ChevronDown,
+  Inbox,
+  FileText,
+  Folders,
+  BookOpen,
+  ShieldCheck,
 } from "lucide-react"
 import type { Role } from "@/generated/prisma/enums"
 
@@ -65,6 +70,16 @@ const navSections: NavSection[] = [
       { href: "/dashboard/pracovne-cesty",            label: "Cestovné príkazy", icon: Plane,      color: "text-sky-400",    roles: [] },
       { href: "/dashboard/pracovne-cesty/vyuctovane", label: "Vyúčtované cesty", icon: CheckCheck, color: "text-green-400",  roles: [] },
       { href: "/dashboard/nastavenia/sadzby",         label: "Sadzby PC",        icon: Settings,   color: "text-amber-400",  roles: ["SPRAVCA_PC", "SPRAVCA_APLIKACIE"] },
+    ],
+  },
+  {
+    title: "Registratúra",
+    items: [
+      { href: "/dashboard/registratura/podatelna", label: "Podateľňa",          icon: Inbox,       color: "text-teal-400",   roles: ["PRACOVNIK_PODATELNE", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/zaznamy",   label: "Záznamy",             icon: FileText,    color: "text-indigo-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/spisy",     label: "Spisy",               icon: Folders,     color: "text-violet-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/plan",      label: "Registratúrny plán",  icon: BookOpen,    color: "text-amber-400",  roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/admin",     label: "Správa rolí",         icon: ShieldCheck, color: "text-rose-400",   roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
     ],
   },
   {

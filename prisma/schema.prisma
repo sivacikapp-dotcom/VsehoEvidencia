@@ -91,6 +91,9 @@ enum Role {
   SPRAVCA_PC
   SPRAVCA_ROLI
   SPRAVCA_APLIKACIE
+  SPRAVCA_REGISTRATURY
+  PRACOVNIK_PODATELNE
+  SPRACOVATEL_REGISTRATURY
 }
 
 enum TravelOrderType {
@@ -248,6 +251,13 @@ model User {
 
   loginAttempts  Int       @default(0)
   lockedUntil    DateTime?
+
+  // Registratúra
+  createdPostaItems  Posta[]     @relation("PostaCreatedBy")
+  processedZaznamy   RegZaznam[] @relation("ZaznamSpracovatel")
+  createdZaznamy     RegZaznam[] @relation("ZaznamCreatedBy")
+  processedSpisy     Spis[]      @relation("SpisSpracovatel")
+  createdSpisy       Spis[]      @relation("SpisCreatedBy")
 }
 
 model AssetRecipientAssignment {
@@ -593,4 +603,154 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([userId])
   @@index([createdAt(sort: Desc)])
+}
+
+// ─── Registratúra ─────────────────────────────────────────────────────────────
+
+enum PostaDirection {
+  DOSLA
+  ODOSLANA
+}
+
+enum PostaSpusob {
+  EMAIL
+  POSTA
+  UPVS
+  OSOBNE
+}
+
+enum PostaStatus {
+  ZAREGISTROVANA
+  PREKLASIFIKOVANA
+}
+
+enum RegZaznamType {
+  ELEKTRONICKY
+  NEELEKTRONICKY
+}
+
+enum RegZaznamStatus {
+  ROZPRACOVANY
+  REGISTROVANY
+  UZAVRETY
+  VYRADENY
+}
+
+enum SpisStatus {
+  OTVORENY
+  UZATVORENY
+}
+
+model RegCounter {
+  id    String @id
+  value Int    @default(0)
+}
+
+model RegistraturnyPlan {
+  id         Int         @id @default(autoincrement())
+  znacka     String      @unique
+  nazov      String
+  lehota     Int
+  maArchivnu Boolean     @default(false)
+  zaznamy    RegZaznam[]
+  spisy      Spis[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Posta {
+  id                         Int            @id @default(autoincrement())
+  poradoveCislo              String         @unique
+  smer                       PostaDirection
+  datumDoruceOdoslania       DateTime
+  sposob                     PostaSpusob
+  odosielatelPrijemcaNazov   String
+  odosielatelPrijemcaAdresa  String?
+  odosielatelPrijemcaIco     String?
+  vec                        String
+  status                     PostaStatus    @default(ZAREGISTROVANA)
+  attachments                PostaAttachment[]
+  zaznam                     RegZaznam?     @relation("PostaZaznam")
+  createdById                Int
+  createdBy                  User           @relation("PostaCreatedBy", fields: [createdById], references: [id])
+  createdAt                  DateTime       @default(now())
+  updatedAt                  DateTime       @updatedAt
+
+  @@index([smer])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model PostaAttachment {
+  id           Int      @id @default(autoincrement())
+  postaId      Int
+  posta        Posta    @relation(fields: [postaId], references: [id], onDelete: Cascade)
+  originalName String
+  storedName   String
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+}
+
+model RegZaznam {
+  id                 Int               @id @default(autoincrement())
+  cisloZaznamu       String            @unique
+  postaId            Int?              @unique
+  posta              Posta?            @relation("PostaZaznam", fields: [postaId], references: [id])
+  planId             Int
+  plan               RegistraturnyPlan @relation(fields: [planId], references: [id])
+  spracovatelId      Int
+  spracovatel        User              @relation("ZaznamSpracovatel", fields: [spracovatelId], references: [id])
+  typZaznamu         RegZaznamType
+  umiestnenieFyzicke String?
+  originalName       String?
+  storedName         String?
+  mimeType           String?
+  fileSize           Int?
+  fileHash           String?
+  status             RegZaznamStatus   @default(ROZPRACOVANY)
+  spisy              SpisZaznam[]
+  createdById        Int
+  createdBy          User              @relation("ZaznamCreatedBy", fields: [createdById], references: [id])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([planId])
+  @@index([spracovatelId])
+  @@index([status])
+  @@index([createdAt(sort: Desc)])
+}
+
+model Spis {
+  id               Int               @id @default(autoincrement())
+  cisloSpisu       String            @unique
+  nazov            String
+  planId           Int
+  plan             RegistraturnyPlan @relation(fields: [planId], references: [id])
+  spracovatelId    Int
+  spracovatel      User              @relation("SpisSpracovatel", fields: [spracovatelId], references: [id])
+  datumOtvorenia   DateTime          @default(now())
+  datumUzatvorenia DateTime?
+  rokVyradenia     Int?
+  status           SpisStatus        @default(OTVORENY)
+  zaznamy          SpisZaznam[]
+  createdById      Int
+  createdBy        User              @relation("SpisCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([planId])
+  @@index([spracovatelId])
+  @@index([status])
+}
+
+model SpisZaznam {
+  spisId    Int
+  zaznamId  Int
+  spis      Spis      @relation(fields: [spisId], references: [id], onDelete: Cascade)
+  zaznam    RegZaznam @relation(fields: [zaznamId], references: [id], onDelete: Cascade)
+  addedAt   DateTime  @default(now())
+  addedById Int?
+
+  @@id([spisId, zaznamId])
 }
