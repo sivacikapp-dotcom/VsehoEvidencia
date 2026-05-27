@@ -85,22 +85,24 @@ export default async function AgendaPage({
     }))
 
   return (
-    <DocumentsClient
-      agenda={{ id: agenda.id, name: agenda.name }}
-      documents={documents}
-      canCreate={false}
-      isAdmin={isAdmin}
-      isAppAdmin={isAppAdmin}
-      allUsers={allUsers.map((u) => ({
-        id: u.id,
-        name: `${u.firstName} ${u.lastName}`,
-        email: u.email,
-      }))}
-      agendaGestors={agenda.gestors.map((g) => ({
-        id: g.user.id,
-        name: `${g.user.firstName} ${g.user.lastName}`,
-      }))}
-      agendaGestorIds={new Set(agenda.gestors.map((g) => g.user.id))}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <DocumentsClient
+        agenda={{ id: agenda.id, name: agenda.name }}
+        documents={documents}
+        canCreate={false}
+        isAdmin={isAdmin}
+        isAppAdmin={isAppAdmin}
+        allUsers={allUsers.map((u) => ({
+          id: u.id,
+          name: `${u.firstName} ${u.lastName}`,
+          email: u.email,
+        }))}
+        agendaGestors={agenda.gestors.map((g) => ({
+          id: g.user.id,
+          name: `${g.user.firstName} ${g.user.lastName}`,
+        }))}
+        agendaGestorIds={new Set(agenda.gestors.map((g) => g.user.id))}
+      />
+    </div>
   )
 }

@@ -70,13 +70,15 @@ export default async function AdminLogsPage({
   }))
 
   return (
-    <LogsClient
-      logs={serialized}
-      total={total}
-      page={page}
-      pageSize={PAGE_SIZE}
-      filters={{ entityType, action, search }}
-      entityTypes={entityTypes.map((e) => e.entityType)}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <LogsClient
+        logs={serialized}
+        total={total}
+        page={page}
+        pageSize={PAGE_SIZE}
+        filters={{ entityType, action, search }}
+        entityTypes={entityTypes.map((e) => e.entityType)}
+      />
+    </div>
   )
 }

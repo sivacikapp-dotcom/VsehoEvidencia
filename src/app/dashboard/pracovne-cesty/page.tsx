@@ -65,12 +65,14 @@ export default async function PracovneCestyPage() {
   }))
 
   return (
-    <TravelOrdersClient
-      orders={serialized}
-      currentUserId={userId}
-      userRoles={roles}
-      supervisors={supervisors}
-      isAppAdmin={isAppAdmin}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <TravelOrdersClient
+        orders={serialized}
+        currentUserId={userId}
+        userRoles={roles}
+        supervisors={supervisors}
+        isAppAdmin={isAppAdmin}
+      />
+    </div>
   )
 }

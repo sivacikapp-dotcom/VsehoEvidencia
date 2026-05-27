@@ -114,13 +114,15 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
   }
 
   return (
-    <TravelOrderDetailClient
-      order={serialized}
-      currentUserId={userId}
-      userRoles={roles}
-      supervisors={supervisors}
-      rates={isAppAdmin ? null : rates}
-      isAppAdmin={isAppAdmin}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <TravelOrderDetailClient
+        order={serialized}
+        currentUserId={userId}
+        userRoles={roles}
+        supervisors={supervisors}
+        rates={isAppAdmin ? null : rates}
+        isAppAdmin={isAppAdmin}
+      />
+    </div>
   )
 }

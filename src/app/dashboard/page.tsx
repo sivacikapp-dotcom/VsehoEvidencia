@@ -53,7 +53,7 @@ export default async function DashboardPage() {
   const hasNotifications = dismissibleNotifications.length > 0
 
   return (
-    <div>
+    <div className="flex-1 overflow-auto p-8">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           Vitajte, {session?.user.name}

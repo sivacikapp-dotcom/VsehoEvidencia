@@ -71,11 +71,13 @@ export default async function VyuctovaneCestyPage() {
   }))
 
   return (
-    <VyuctovaneCestyClient
-      orders={serialized}
-      currentUserId={userId}
-      userRoles={roles}
-      isAppAdmin={isAppAdmin}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <VyuctovaneCestyClient
+        orders={serialized}
+        currentUserId={userId}
+        userRoles={roles}
+        isAppAdmin={isAppAdmin}
+      />
+    </div>
   )
 }

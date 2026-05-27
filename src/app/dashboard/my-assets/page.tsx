@@ -61,10 +61,12 @@ export default async function MyAssetsPage() {
   }))
 
   return (
-    <MyAssetsClient
-      assignments={assignments}
-      userName={session.user.name ?? ""}
-      userId={userId}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <MyAssetsClient
+        assignments={assignments}
+        userName={session.user.name ?? ""}
+        userId={userId}
+      />
+    </div>
   )
 }

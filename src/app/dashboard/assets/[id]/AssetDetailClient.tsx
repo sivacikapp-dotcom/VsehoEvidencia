@@ -1396,13 +1396,29 @@ export default function AssetDetailClient({
             <div>
               <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Zmena v procese</p>
               <ul className="mt-1 space-y-0.5">
-                {pendingConfirmations.map((pc, i) => (
-                  <li key={i} className="text-xs text-amber-700 dark:text-amber-400">
-                    {pc.type === "ASSET_ASSIGNED"
-                      ? `Čaká sa na potvrdenie pridelenia od: ${pc.userName}`
-                      : `Čaká sa na potvrdenie odobrania od: ${pc.userName}`}
-                  </li>
-                ))}
+                {(() => {
+                  const assigned = pendingConfirmations.filter(pc => pc.type === "ASSET_ASSIGNED")
+                  const returned = pendingConfirmations.filter(pc => pc.type === "ASSET_RETURNED")
+                  return (
+                    <>
+                      {returned.map((pc, i) => (
+                        <li key={`r${i}`} className="text-xs text-amber-700 dark:text-amber-400">
+                          Čaká sa na potvrdenie odobrania od: {pc.userName}
+                        </li>
+                      ))}
+                      {assigned.length === 1 && (
+                        <li className="text-xs text-amber-700 dark:text-amber-400">
+                          Čaká sa na potvrdenie pridelenia od: {assigned[0].userName}
+                        </li>
+                      )}
+                      {assigned.length > 1 && (
+                        <li className="text-xs text-amber-700 dark:text-amber-400">
+                          Čaká sa na potvrdenie pridelenia do miestnosti od niektorého z: {assigned.map(a => a.userName).join(", ")}
+                        </li>
+                      )}
+                    </>
+                  )
+                })()}
               </ul>
             </div>
           </div>

@@ -76,5 +76,9 @@ export default async function UsersPage() {
 
   const users = rawUsers.map(mapUser)
 
-  return <UsersClient users={users} canManage={isRoleManager || isAppAdmin} />
+  return (
+    <div className="flex-1 overflow-auto p-8">
+      <UsersClient users={users} canManage={isRoleManager || isAppAdmin} />
+    </div>
+  )
 }

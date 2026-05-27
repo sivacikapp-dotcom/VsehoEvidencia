@@ -251,7 +251,11 @@ function RecipientSection({ assignments, userId }: { assignments: Assignment[]; 
             </div>
           ) : (
             <>
-              <div className="flex justify-end px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-700">
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+                  <span>{{ type: "Typ", name: "Majetok", serialNumber: "Výrobné číslo", functionStatus: "Stav", assignedAt: "Pridelené dňa" }[sortKey]}</span>
+                </div>
                 <ColumnManager cols={currMovable} hidden={currPrefs.hidden} order={currPrefs.order} onToggle={currToggle} onReorder={currReorder} onReset={currReset} />
               </div>
               <div className="overflow-x-auto">
@@ -262,7 +266,7 @@ function RecipientSection({ assignments, userId }: { assignments: Assignment[]; 
                       {currCols.map(col => {
                         const active = sortKey === col.key
                         return (
-                          <th key={col.key} style={{ width: currGetWidth(col.key) }} onClick={() => col.sortable && handleSort(col.key as RecipientSortKey)} className={`relative group ${thBase} ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}>
+                          <th key={col.key} style={{ width: currGetWidth(col.key) }} onClick={() => col.sortable && handleSort(col.key as RecipientSortKey)} className={`relative group px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap ${active && col.sortable ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"} ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}>
                             <div className="flex items-center gap-1 pr-2">
                               {col.label}
                               {col.sortable && (active ? sortDir === "asc" ? <ChevronUp size={12} className="text-blue-500 shrink-0" /> : <ChevronDown size={12} className="text-blue-500 shrink-0" /> : <ArrowUpDown size={11} className="opacity-0 group-hover:opacity-40 transition-opacity shrink-0" />)}

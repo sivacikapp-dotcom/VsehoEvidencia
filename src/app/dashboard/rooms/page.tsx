@@ -54,5 +54,9 @@ export default async function RoomsPage() {
     })),
   }))
 
-  return <RoomsClient rooms={rooms} allUsers={allUsers} userId={parseInt(session.user.id)} userName={session.user.name} isAppAdmin={isAppAdmin} />
+  return (
+    <div className="flex-1 overflow-auto p-8">
+      <RoomsClient rooms={rooms} allUsers={allUsers} userId={parseInt(session.user.id)} userName={session.user.name} isAppAdmin={isAppAdmin} />
+    </div>
+  )
 }

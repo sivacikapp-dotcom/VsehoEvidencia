@@ -29,7 +29,7 @@ type Asset = {
   name: string
   brand: string
   serialNumber: string | null
-  usagePlace: string
+  usagePlace: UsagePlace
   yearOfManufacture: number | null
   allocationStatus: AllocationStatus
   functionStatus: FunctionStatus
@@ -443,7 +443,7 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
       <th
         style={{ width: getWidth(col.key), ...stickyThStyle(col) }}
         onClick={() => col.sortable && handleSort(col.key as SortKey)}
-        className={`relative group px-3 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap overflow-hidden bg-gray-50 dark:bg-gray-800 ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}
+        className={`relative group px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap overflow-hidden bg-gray-50 dark:bg-gray-800 ${active && col.sortable ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"} ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}
       >
         <div className="flex items-center gap-1 pr-2">
           {col.label}
@@ -464,27 +464,115 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
   // ── Security view ──────────────────────────────────────────────────────────
   if (isSecurity && !isManager) {
     return (
-      <div>
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Majetok</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Zobrazené polia pre bezpečnostného pracovníka</p>
-        </div>
-        <div className="flex items-center gap-2 mb-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Hľadať podľa ID, názvu, výrobného čísla..." value={search} onChange={e => setSearch(e.target.value)} className={`w-full pl-9 pr-3 py-2 text-sm ${inputCls}`} />
+      <div className="flex-1 flex flex-col min-h-0">
+        <div className="shrink-0 px-8 pt-8 pb-4">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Majetok</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Zobrazené polia pre bezpečnostného pracovníka</p>
           </div>
-          <ColumnManager cols={movableCols} hidden={prefs.hidden} order={prefs.order} onToggle={toggleHidden} onReorder={reorderCols} onReset={reset} />
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1 max-w-sm">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" placeholder="Hľadať podľa ID, názvu, výrobného čísla..." value={search} onChange={e => setSearch(e.target.value)} className={`w-full pl-9 pr-3 py-2 text-sm ${inputCls}`} />
+            </div>
+            <ColumnManager cols={movableCols} hidden={prefs.hidden} order={prefs.order} onToggle={toggleHidden} onReorder={reorderCols} onReset={reset} />
+          </div>
         </div>
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <div className="overflow-x-auto">
+        <div className="flex-1 min-h-0 px-8 pb-8">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col">
+            <div className="flex-1 overflow-x-auto overflow-y-auto">
+              <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", minWidth: totalWidth }}>
+                <colgroup>{visibleCols.map(col => <col key={col.key} style={{ width: getWidth(col.key) }} />)}</colgroup>
+                <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
+                  <tr>{visibleCols.map(col => <ColHeader key={col.key} col={col} />)}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {filtered.map(a => (
+                    <tr key={a.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
+                      {visibleCols.map(col => (
+                        <td key={col.key}
+                          style={stickyTdStyle(col)}
+                          className={`px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 overflow-hidden ${col.fixed ? "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800" : ""}`}>
+                          {renderCell(col.key, a)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr><td colSpan={visibleCols.length} className="px-3 py-8 text-center text-sm text-gray-400">Žiadny majetok</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Manager view ───────────────────────────────────────────────────────────
+  return (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="shrink-0 px-8 pt-8 pb-4">
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Majetok</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{assets.length} záznamov · zobrazených {filtered.length}</p>
+          </div>
+          {!isAppAdmin && (
+            <button onClick={() => setShowNewModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
+              <Plus size={15} />
+              Nový majetok
+            </button>
+          )}
+          {isAppAdmin && (
+            <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
+              Režim len na čítanie
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" placeholder="Hľadať (ID, názov, číslo)..." value={search} onChange={e => setSearch(e.target.value)} className={`pl-8 pr-3 py-1.5 text-sm w-56 ${inputCls}`} />
+          </div>
+          <div className="h-5 w-px bg-gray-200 dark:bg-gray-700" />
+          <MultiSelect placeholder="Typ" options={availableTypeOptions} selected={filterTypes} onChange={setFilterTypes} />
+          <MultiSelect placeholder="Značka" options={availableBrandOptions} selected={filterBrands} onChange={setFilterBrands} />
+          <MultiSelect placeholder="Miesto" options={availablePlaceOptions} selected={filterPlaces} onChange={setFilterPlaces} />
+          <MultiSelect placeholder="Pridelenie" options={availableStatusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
+          {(activeFiltersCount > 0 || search) && (
+            <button type="button" onClick={clearAllFilters} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
+              <X size={12} />Zrušiť filtre
+            </button>
+          )}
+          {sortKey && (
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
+              {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+              <span>{cols.find(c => c.key === sortKey)?.label}</span>
+              <button type="button" onClick={() => setSortKey(null)} className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100">
+                <X size={11} />
+              </button>
+            </div>
+          )}
+          {isPending && <div className="flex items-center gap-1.5 text-sm text-gray-400"><Loader2 size={14} className="animate-spin" />Aktualizujem...</div>}
+          <div className="ml-auto">
+            <ColumnManager cols={movableCols} hidden={prefs.hidden} order={prefs.order} onToggle={toggleHidden} onReorder={reorderCols} onReset={reset} />
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 px-8 pb-8">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col">
+          <div className="flex-1 overflow-x-auto overflow-y-auto">
             <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", minWidth: totalWidth }}>
               <colgroup>{visibleCols.map(col => <col key={col.key} style={{ width: getWidth(col.key) }} />)}</colgroup>
-              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 sticky top-0 z-10">
                 <tr>{visibleCols.map(col => <ColHeader key={col.key} col={col} />)}</tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {filtered.map(a => (
+                {sorted.map(a => (
                   <tr key={a.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
                     {visibleCols.map(col => (
                       <td key={col.key}
@@ -495,83 +583,12 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
                     ))}
                   </tr>
                 ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={visibleCols.length} className="px-3 py-8 text-center text-sm text-gray-400">Žiadny majetok</td></tr>
+                {sorted.length === 0 && (
+                  <tr><td colSpan={visibleCols.length} className="px-3 py-10 text-center text-sm text-gray-400">{assets.length === 0 ? "Žiadny evidovaný majetok. Kliknite na tlačidlo Nový majetok." : "Žiadne výsledky pre zadané filtre."}</td></tr>
                 )}
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Manager view ───────────────────────────────────────────────────────────
-  return (
-    <div>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Majetok</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{assets.length} záznamov · zobrazených {filtered.length}</p>
-        </div>
-        {!isAppAdmin && (
-          <button onClick={() => setShowNewModal(true)} className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">
-            <Plus size={15} />
-            Nový majetok
-          </button>
-        )}
-        {isAppAdmin && (
-          <span className="px-3 py-1.5 text-xs font-medium text-violet-700 dark:text-violet-300 bg-violet-100 dark:bg-violet-900/30 rounded-lg">
-            Režim len na čítanie
-          </span>
-        )}
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2 mb-4">
-        <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Hľadať (ID, názov, číslo)..." value={search} onChange={e => setSearch(e.target.value)} className={`pl-8 pr-3 py-1.5 text-sm w-56 ${inputCls}`} />
-        </div>
-        <div className="h-5 w-px bg-gray-200 dark:bg-gray-700" />
-        <MultiSelect placeholder="Typ" options={availableTypeOptions} selected={filterTypes} onChange={setFilterTypes} />
-        <MultiSelect placeholder="Značka" options={availableBrandOptions} selected={filterBrands} onChange={setFilterBrands} />
-        <MultiSelect placeholder="Miesto" options={availablePlaceOptions} selected={filterPlaces} onChange={setFilterPlaces} />
-        <MultiSelect placeholder="Pridelenie" options={availableStatusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
-        {(activeFiltersCount > 0 || search) && (
-          <button type="button" onClick={clearAllFilters} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-            <X size={12} />Zrušiť filtre
-          </button>
-        )}
-        {isPending && <div className="flex items-center gap-1.5 text-sm text-gray-400"><Loader2 size={14} className="animate-spin" />Aktualizujem...</div>}
-        <div className="ml-auto">
-          <ColumnManager cols={movableCols} hidden={prefs.hidden} order={prefs.order} onToggle={toggleHidden} onReorder={reorderCols} onReset={reset} />
-        </div>
-      </div>
-
-      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="text-sm" style={{ tableLayout: "fixed", width: "100%", minWidth: totalWidth }}>
-            <colgroup>{visibleCols.map(col => <col key={col.key} style={{ width: getWidth(col.key) }} />)}</colgroup>
-            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <tr>{visibleCols.map(col => <ColHeader key={col.key} col={col} />)}</tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {sorted.map(a => (
-                <tr key={a.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800">
-                  {visibleCols.map(col => (
-                    <td key={col.key}
-                      style={stickyTdStyle(col)}
-                      className={`px-3 py-2.5 text-sm text-gray-700 dark:text-gray-300 overflow-hidden ${col.fixed ? "bg-white dark:bg-gray-900 group-hover:bg-gray-50 dark:group-hover:bg-gray-800" : ""}`}>
-                      {renderCell(col.key, a)}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              {sorted.length === 0 && (
-                <tr><td colSpan={visibleCols.length} className="px-3 py-10 text-center text-sm text-gray-400">{assets.length === 0 ? "Žiadny evidovaný majetok. Kliknite na tlačidlo Nový majetok." : "Žiadne výsledky pre zadané filtre."}</td></tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
 

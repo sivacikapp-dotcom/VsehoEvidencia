@@ -110,14 +110,16 @@ export default async function MyCardPage() {
     : []
 
   return (
-    <MyCardClient
-      userName={session.user.name}
-      userEmail={session.user.email}
-      userRoles={session.user.roles}
-      assignments={assignments}
-      roomAccesses={roomAccesses}
-      userId={userId}
-      subordinates={subordinates}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <MyCardClient
+        userName={session.user.name}
+        userEmail={session.user.email}
+        userRoles={session.user.roles}
+        assignments={assignments}
+        roomAccesses={roomAccesses}
+        userId={userId}
+        subordinates={subordinates}
+      />
+    </div>
   )
 }

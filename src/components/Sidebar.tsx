@@ -29,6 +29,7 @@ interface NavItem {
   href: string
   label: string
   icon: React.ElementType
+  color: string
   roles: Role[]
 }
 
@@ -40,37 +41,37 @@ interface NavSection {
 const navSections: NavSection[] = [
   {
     items: [
-      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: [] },
+      { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, color: "text-slate-400", roles: [] },
     ],
   },
   {
     title: "Evidencia majetku",
     items: [
-      { href: "/dashboard/assets",    label: "Majetok",         icon: Package,    roles: ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK", "SPRAVCA_APLIKACIE"] },
-      { href: "/dashboard/my-assets", label: "Moje priradenia", icon: User,       roles: ["PRIJEMCA"] },
-      { href: "/dashboard/my-card",   label: "Moja karta",      icon: CreditCard, roles: [] },
-      { href: "/dashboard/rooms",     label: "Miestnosti",      icon: Building2,  roles: ["SPRAVCA_KARIET", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/assets",    label: "Majetok",         icon: Package,    color: "text-orange-400",  roles: ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/my-assets", label: "Moje priradenia", icon: User,       color: "text-violet-400",  roles: ["PRIJEMCA"] },
+      { href: "/dashboard/my-card",   label: "Moja karta",      icon: CreditCard, color: "text-emerald-400", roles: [] },
+      { href: "/dashboard/rooms",     label: "Miestnosti",      icon: Building2,  color: "text-cyan-400",    roles: ["SPRAVCA_KARIET", "SPRAVCA_APLIKACIE"] },
     ],
   },
   {
     title: "Interné dokumenty",
     items: [
-      { href: "/dashboard/dokumenty", label: "Dokumenty", icon: FolderOpen, roles: [] },
+      { href: "/dashboard/dokumenty", label: "Dokumenty", icon: FolderOpen, color: "text-blue-400", roles: [] },
     ],
   },
   {
     title: "Pracovné cesty",
     items: [
-      { href: "/dashboard/pracovne-cesty",            label: "Cestovné príkazy", icon: Plane,      roles: [] },
-      { href: "/dashboard/pracovne-cesty/vyuctovane", label: "Vyúčtované cesty", icon: CheckCheck, roles: [] },
-      { href: "/dashboard/nastavenia/sadzby",         label: "Sadzby PC",        icon: Settings,   roles: ["SPRAVCA_PC", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/pracovne-cesty",            label: "Cestovné príkazy", icon: Plane,      color: "text-sky-400",    roles: [] },
+      { href: "/dashboard/pracovne-cesty/vyuctovane", label: "Vyúčtované cesty", icon: CheckCheck, color: "text-green-400",  roles: [] },
+      { href: "/dashboard/nastavenia/sadzby",         label: "Sadzby PC",        icon: Settings,   color: "text-amber-400",  roles: ["SPRAVCA_PC", "SPRAVCA_APLIKACIE"] },
     ],
   },
   {
     title: "Nastavenia",
     items: [
-      { href: "/dashboard/users",      label: "Používatelia", icon: Users,      roles: [] },
-      { href: "/dashboard/admin/logs", label: "Audit Log",    icon: ScrollText, roles: ["SPRAVCA_KARIET", "SPRAVCA_ROLI", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/users",      label: "Používatelia", icon: Users,      color: "text-purple-400", roles: [] },
+      { href: "/dashboard/admin/logs", label: "Audit Log",    icon: ScrollText, color: "text-rose-400",   roles: ["SPRAVCA_KARIET", "SPRAVCA_ROLI", "SPRAVCA_APLIKACIE"] },
     ],
   },
 ]
@@ -110,13 +111,15 @@ export default function Sidebar({ user }: SidebarProps) {
           )
           if (visible.length === 0) return null
 
-          const isCollapsed = section.title ? (collapsed[section.title] ?? false) : false
           const longestMatchHref = visible
             .filter(item => pathname === item.href || pathname.startsWith(item.href + "/"))
             .reduce<string | undefined>((best, item) =>
               item.href.length > (best?.length ?? 0) ? item.href : best,
               undefined
             )
+          const sectionIsActive = longestMatchHref !== undefined
+          // aktívna sekcia sa nedá zbaliť
+          const isCollapsed = section.title ? ((collapsed[section.title] ?? false) && !sectionIsActive) : false
 
           return (
             <div key={section.title ?? "__top"}>
@@ -126,17 +129,28 @@ export default function Sidebar({ user }: SidebarProps) {
                   onClick={() => toggleSection(section.title!)}
                   className="flex items-center justify-between w-full px-3 mb-1 group"
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-gray-500 group-hover:text-gray-400 transition-colors">
-                    {section.title}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {sectionIsActive && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                    )}
+                    <span className={`text-[10px] font-semibold uppercase tracking-widest transition-colors ${
+                      sectionIsActive
+                        ? "text-blue-400"
+                        : "text-gray-500 group-hover:text-gray-400"
+                    }`}>
+                      {section.title}
+                    </span>
+                  </div>
                   <ChevronDown
                     size={12}
-                    className={`text-gray-600 group-hover:text-gray-400 transition-all duration-200 ${isCollapsed ? "-rotate-90" : ""}`}
+                    className={`transition-all duration-200 ${
+                      sectionIsActive ? "text-blue-500" : "text-gray-600 group-hover:text-gray-400"
+                    } ${isCollapsed ? "-rotate-90" : ""}`}
                   />
                 </button>
               )}
               <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? "max-h-0 opacity-0" : "max-h-96 opacity-100"}`}>
-                {visible.map(({ href, label, icon: Icon }) => {
+                {visible.map(({ href, label, icon: Icon, color }) => {
                   const active = href === longestMatchHref
                   return (
                     <Link
@@ -144,11 +158,11 @@ export default function Sidebar({ user }: SidebarProps) {
                       href={href}
                       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                         active
-                          ? "bg-blue-600 text-white"
+                          ? "bg-blue-600 text-white shadow-sm"
                           : "text-gray-400 hover:bg-gray-800 hover:text-white"
                       }`}
                     >
-                      <Icon size={16} />
+                      <Icon size={16} className={active ? "text-white" : color} />
                       {label}
                     </Link>
                   )

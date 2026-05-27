@@ -70,8 +70,8 @@ export default async function DashboardLayout({
       <Sidebar user={{ roles: session.user.roles }} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <Navbar user={user} notifications={softNotifications} />
-        <main className="flex-1 overflow-auto">
-          <div className="p-8">{children}</div>
+        <main className="flex-1 overflow-hidden flex flex-col">
+          {children}
         </main>
       </div>
     </div>

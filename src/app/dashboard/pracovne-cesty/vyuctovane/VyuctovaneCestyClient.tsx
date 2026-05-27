@@ -58,7 +58,7 @@ function Th({ label, colKey, sortKey, sortDir, onSort, className }: {
   return (
     <th className={`${thBase} ${className ?? ""}`}>
       <button type="button" onClick={() => onSort(colKey)}
-        className="flex items-center gap-1 hover:text-gray-700 dark:hover:text-gray-200 transition-colors whitespace-nowrap">
+        className={`flex items-center gap-1 transition-colors whitespace-nowrap ${active ? "text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300" : "hover:text-gray-700 dark:hover:text-gray-200"}`}>
         {label}
         {active
           ? sortDir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />
@@ -205,6 +205,15 @@ export default function VyuctovaneCestyClient({ orders, userRoles, isAppAdmin = 
           >
             <X size={12} /> Zrušiť filtre
           </button>
+        )}
+        {sortKey && (
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
+            {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+            <span>{{ orderNumber: "Číslo", type: "Typ", purpose: "Účel / Cieľ", departureAt: "Termín", user: "Zamestnanec", status: "Stav vyúčtovania", totalExpenses: "Náklady celkom", diff: "Preplatok / Nedoplatok" }[sortKey]}</span>
+            <button type="button" onClick={() => setSortKey(null)} className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100">
+              <X size={11} />
+            </button>
+          </div>
         )}
         <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
           {sorted.length} / {orders.length}

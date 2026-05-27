@@ -37,5 +37,9 @@ export default async function RateSettingsPage() {
     createdBy: c.createdBy ? `${c.createdBy.firstName} ${c.createdBy.lastName}` : null,
   }))
 
-  return <RateConfigClient configs={serialized} defaultRates={DEFAULT_TRAVEL_RATES} isAppAdmin={isAppAdmin} />
+  return (
+    <div className="flex-1 overflow-auto p-8">
+      <RateConfigClient configs={serialized} defaultRates={DEFAULT_TRAVEL_RATES} isAppAdmin={isAppAdmin} />
+    </div>
+  )
 }

@@ -113,8 +113,9 @@ export default async function AssetDetailPage({
 
   const H = HIDDEN
   return (
-    <AssetDetailClient
-      backHref={backHref}
+    <div className="flex-1 overflow-auto p-8">
+      <AssetDetailClient
+        backHref={backHref}
       pendingConfirmations={pendingConfirmations}
       asset={{
         id: asset.id,
@@ -171,6 +172,7 @@ export default async function AssetDetailPage({
       userId={currentUserId}
       attachments={isAppAdmin ? [] : attachments}
       notes={notes}
-    />
+      />
+    </div>
   )
 }

@@ -354,6 +354,35 @@ export async function notifyExpenseReportRejected(
   await prisma.notification.createMany({ data: notifications })
 }
 
+export async function notifyRoomAssetAssigned(
+  assetId: number,
+  assetType: string,
+  assetName: string,
+  assetSN: string | null,
+  roomId: number,
+  createdByUserId: number
+): Promise<number> {
+  const roomAccesses = await prisma.userRoomAccess.findMany({
+    where: { roomId },
+    select: { userId: true },
+  })
+  const userIds = roomAccesses.map(a => a.userId).filter(id => id !== createdByUserId)
+  if (userIds.length === 0) return 0
+
+  await prisma.notification.createMany({
+    data: userIds.map(userId => ({
+      userId,
+      type: "ASSET_ASSIGNED" as const,
+      title: "Priradenie majetku do miestnosti",
+      message: `Do miestnosti bol priradený pracovný prostriedok ${assetLabel(assetType, assetName, assetSN)}. Potvrďte toto priradenie.`,
+      assetId,
+      createdByUserId,
+      mustAcknowledge: true,
+    })),
+  })
+  return userIds.length
+}
+
 export async function notifyAssetChanged(
   assetId: number,
   assetType: string,

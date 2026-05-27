@@ -341,7 +341,13 @@ export default function RoomsClient({ rooms, allUsers, userId, userName, isAppAd
                   {room.assets.length > 0 && (
                     <div className="border-t border-gray-100 dark:border-gray-700">
                       <div className="flex items-center justify-between px-4 pt-3 pb-1">
-                        <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Majetok v miestnosti</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide">Majetok v miestnosti</p>
+                          <div className="flex items-center gap-1 px-2 py-1 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-md">
+                            {sortDir === "asc" ? <ChevronUp size={11} className="shrink-0" /> : <ChevronDown size={11} className="shrink-0" />}
+                            <span>{ASSET_COLS.find(c => c.key === sortCol)?.label}</span>
+                          </div>
+                        </div>
                         <ColumnManager cols={movableCols} hidden={prefs.hidden} order={prefs.order} onToggle={toggleHidden} onReorder={reorderCols} onReset={reset} />
                       </div>
                       <div className="overflow-x-auto">
@@ -356,7 +362,7 @@ export default function RoomsClient({ rooms, allUsers, userId, userName, isAppAd
                                     key={col.key}
                                     style={{ width: getWidth(col.key) }}
                                     onClick={() => col.sortable && handleSort(col.key as AssetSortCol)}
-                                    className={`relative group px-4 py-2 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap overflow-hidden ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}
+                                    className={`relative group px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide whitespace-nowrap overflow-hidden ${active ? "text-blue-600 dark:text-blue-400" : "text-gray-500 dark:text-gray-400"} ${col.sortable ? "cursor-pointer select-none hover:text-gray-700 dark:hover:text-gray-200" : ""}`}
                                   >
                                     <div className="flex items-center gap-1 pr-2">
                                       {col.label}

@@ -2,15 +2,16 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { X, Loader2, User, Building2, AlertCircle } from "lucide-react"
+import { X, Loader2, User, Building2, AlertCircle, MapPin } from "lucide-react"
 import { assignAsset } from "./actions"
-import { allocationStatusLabels } from "@/lib/labels"
-import type { AllocationStatus } from "@/generated/prisma/enums"
+import { allocationStatusLabels, usagePlaceLabels } from "@/lib/labels"
+import type { AllocationStatus, UsagePlace } from "@/generated/prisma/enums"
 
 interface Asset {
   id: number
   name: string
   serialNumber: string | null
+  usagePlace: UsagePlace
   allocationStatus: AllocationStatus
   currentRecipient: { id: number; name: string } | null
   currentRoom: { id: number; name: string } | null
@@ -42,10 +43,13 @@ export default function AssignModal({
   const [note, setNote] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
+  const [changeUsagePlace, setChangeUsagePlace] = useState(true)
 
   const isAssigned =
     asset.allocationStatus === "Prideleny_Recipient" ||
     asset.allocationStatus === "Prideleny_Room"
+
+  const showUsagePlaceOffer = tab === "room" && asset.usagePlace !== "Office"
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -61,7 +65,8 @@ export default function AssignModal({
       tab,
       parseInt(selectedId),
       currentUserName,
-      note
+      note,
+      tab === "room" ? changeUsagePlace : false
     )
 
     setPending(false)
@@ -186,6 +191,27 @@ export default function AssignModal({
                   </p>
                 )}
               </div>
+            )}
+
+            {/* UsagePlace offer (room tab only, when current != Office) */}
+            {showUsagePlaceOffer && (
+              <label className="flex items-start gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={changeUsagePlace}
+                  onChange={(e) => setChangeUsagePlace(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-300">
+                    <MapPin size={12} />
+                    Zmeniť Miesto používania na „Kancelária"
+                  </div>
+                  <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-0.5">
+                    Aktuálna hodnota: <span className="font-medium">{usagePlaceLabels[asset.usagePlace]}</span>
+                  </p>
+                </div>
+              </label>
             )}
 
             {/* Note */}

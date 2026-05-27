@@ -59,6 +59,7 @@ export const usagePlaceLabels: Record<UsagePlace, string> = {
   Office: "Kancelária",
   HomeOffice: "Home office",
   Prenosny: "Prenosný",
+  Nezadane: "Neurčené",
 }
 
 export const allocationStatusLabels: Record<AllocationStatus, string> = {

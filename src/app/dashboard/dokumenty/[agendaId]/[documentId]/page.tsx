@@ -99,9 +99,10 @@ export default async function DocumentDetailPage({
   const HIDDEN = "••••••"
 
   return (
-    <DocumentDetailClient
-      document={{
-        id: doc.id,
+    <div className="flex-1 overflow-auto p-8">
+      <DocumentDetailClient
+        document={{
+          id: doc.id,
         znacka: isAppAdmin ? HIDDEN : doc.znacka,
         nazov: doc.nazov,
         datumSchvalenia: isAppAdmin ? HIDDEN : doc.datumSchvalenia.toISOString().split("T")[0],
@@ -163,6 +164,7 @@ export default async function DocumentDetailPage({
       isAppAdmin={isAppAdmin}
       allUsers={isAppAdmin ? [] : otherUsers.map((u) => ({ ...u, hasAccess: accessUserIds.has(u.id) }))}
       allUsersForAttachment={isAppAdmin ? [] : otherUsers}
-    />
+      />
+    </div>
   )
 }

@@ -38,8 +38,9 @@ export default async function DokumentyPage() {
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isAdmin && !isAgendaGestor
 
   return (
-    <AgendasClient
-      agendas={agendas.map((a) => ({
+    <div className="flex-1 overflow-auto p-8">
+      <AgendasClient
+        agendas={agendas.map((a) => ({
         id: a.id,
         name: a.name,
         documentCount: a.documents.length,
@@ -58,5 +59,6 @@ export default async function DokumentyPage() {
         isDocAdmin: u.docRole === "SPRAVCA_DOKUMENTOV",
       }))}
     />
+    </div>
   )
 }

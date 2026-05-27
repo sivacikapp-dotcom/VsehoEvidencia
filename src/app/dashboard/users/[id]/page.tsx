@@ -96,24 +96,26 @@ export default async function UserCardPage({
   }))
 
   return (
-    <UserCardClient
-      user={{
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        roles: user.roles,
-        supervisorName: user.supervisor
-          ? `${user.supervisor.firstName} ${user.supervisor.lastName}`
-          : null,
-      }}
-      assignments={assignments}
-      roomAccesses={roomAccesses}
-      allRooms={isManager ? allRooms : []}
-      viewerUserId={parseInt(session.user.id)}
-      viewerName={session.user.name}
-      isManager={isManager}
-      backUrl={canViewAll ? "/dashboard/users" : "/dashboard/my-card"}
-    />
+    <div className="flex-1 overflow-auto p-8">
+      <UserCardClient
+        user={{
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          roles: user.roles,
+          supervisorName: user.supervisor
+            ? `${user.supervisor.firstName} ${user.supervisor.lastName}`
+            : null,
+        }}
+        assignments={assignments}
+        roomAccesses={roomAccesses}
+        allRooms={isManager ? allRooms : []}
+        viewerUserId={parseInt(session.user.id)}
+        viewerName={session.user.name}
+        isManager={isManager}
+        backUrl={canViewAll ? "/dashboard/users" : "/dashboard/my-card"}
+      />
+    </div>
   )
 }

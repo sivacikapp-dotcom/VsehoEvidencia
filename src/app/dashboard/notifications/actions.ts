@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { notifyAcceptance } from "@/lib/notificationHelpers"
+import { notifyAcceptance, notifyAssetChanged } from "@/lib/notificationHelpers"
 import { assetTypeLabels } from "@/lib/labels"
 import type { AssetType } from "@/generated/prisma/enums"
 
@@ -105,6 +105,17 @@ export async function acknowledgeNotifications(notificationIds: number[]): Promi
           where: { assetId: n.assetId, type: "ASSET_RETURNED", mustAcknowledge: true, acknowledgedAt: null },
           data: { acknowledgedAt: new Date() },
         })
+        // For room assignments: close other room users' pending approval notifications and notify them
+        if (roomAssignment && n.asset) {
+          await prisma.notification.updateMany({
+            where: { assetId: n.assetId, type: "ASSET_ASSIGNED", mustAcknowledge: true, acknowledgedAt: null },
+            data: { acknowledgedAt: new Date() },
+          })
+          await notifyAssetChanged(
+            n.assetId, n.asset.type, n.asset.name, n.asset.serialNumber,
+            [userId], ["Priradenie do miestnosti bolo potvrdené"]
+          )
+        }
 
       } else if (n.type === "ASSET_RETURNED") {
         // Only finalize to Neprideleny_Volny if no new ASSET_ASSIGNED is still pending
@@ -181,6 +192,11 @@ export async function rejectNotification(notificationId: number, reason: string)
         // Close related ASSET_RETURNED notifications — change was undone
         await prisma.notification.updateMany({
           where: { assetId: notification.assetId, type: "ASSET_RETURNED", mustAcknowledge: true, acknowledgedAt: null },
+          data: { acknowledgedAt: new Date() },
+        })
+        // Close other room users' pending approval notifications — rejection undoes the assignment
+        await prisma.notification.updateMany({
+          where: { assetId: notification.assetId, type: "ASSET_ASSIGNED", mustAcknowledge: true, acknowledgedAt: null },
           data: { acknowledgedAt: new Date() },
         })
 

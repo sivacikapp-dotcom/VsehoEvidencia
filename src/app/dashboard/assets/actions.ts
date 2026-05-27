@@ -8,7 +8,7 @@ import { unlink } from "fs/promises"
 import { join } from "path"
 import type { AssetType, Brand, UsagePlace, AssetKind, FunctionStatus, Role } from "@/generated/prisma/enums"
 import { createAuditLog } from "@/lib/auditLog"
-import { notifyAssetAssigned, notifyAssetReturned, notifyAssetChanged } from "@/lib/notificationHelpers"
+import { notifyAssetAssigned, notifyAssetReturned, notifyAssetChanged, notifyRoomAssetAssigned } from "@/lib/notificationHelpers"
 import {
   assetTypeLabels,
   brandLabels,
@@ -139,7 +139,8 @@ export async function assignAsset(
   type: "recipient" | "room",
   targetId: number,
   assignedBy: string,
-  note: string
+  note: string,
+  updateUsagePlace?: boolean
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
   if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
@@ -191,9 +192,16 @@ export async function assignAsset(
       await prisma.assetRoomAssignment.create({
         data: { assetId, roomId: targetId, assignedBy, assignmentNote: note.trim() || null },
       })
+      // Send approval requests to all room users except the assigner
+      const notifiedCount = await notifyRoomAssetAssigned(
+        assetId, asset.type, asset.name, asset.serialNumber, targetId, parseInt(session.user.id)
+      )
       await prisma.asset.update({
         where: { id: assetId },
-        data: { allocationStatus: "V_procese" },
+        data: {
+          allocationStatus: notifiedCount > 0 ? "V_procese" : "Prideleny_Room",
+          ...(updateUsagePlace ? { usagePlace: "Office" } : {}),
+        },
       })
       // Notify previous recipients whose asset was moved to room (blocking)
       await Promise.all(
@@ -201,8 +209,6 @@ export async function assignAsset(
           notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id))
         )
       )
-      // Notify users with access to this room (informational)
-      await notifyAssetChanged(assetId, asset.type, asset.name, asset.serialNumber, [parseInt(session.user.id)])
     }
 
     await createAuditLog({
@@ -321,6 +327,9 @@ export async function returnAsset(
       where: { assetId, returnedAt: null },
       select: { userId: true },
     })
+    const hadRoomAssignment = await prisma.assetRoomAssignment.count({
+      where: { assetId, removedAt: null },
+    }) > 0
 
     const now = new Date()
     const note = returnNote?.trim() || null
@@ -332,9 +341,21 @@ export async function returnAsset(
       where: { assetId, removedAt: null },
       data: { removedAt: now, removedBy: returnedBy, removalNote: note },
     })
+
+    // Close any pending approval notifications (e.g. room users who haven't approved yet)
+    await prisma.notification.updateMany({
+      where: { assetId, type: { in: ["ASSET_ASSIGNED", "ASSET_RETURNED"] }, mustAcknowledge: true, acknowledgedAt: null },
+      data: { acknowledgedAt: now },
+    })
+
+    // If there are recipients to notify, stay in V_procese until they acknowledge; otherwise finalize immediately
+    const finalStatus = prevRecipients.length > 0 ? "V_procese" : "Neprideleny_Volny"
     await prisma.asset.update({
       where: { id: assetId },
-      data: { allocationStatus: "V_procese" },
+      data: {
+        allocationStatus: finalStatus,
+        ...(hadRoomAssignment ? { usagePlace: "Nezadane" } : {}),
+      },
     })
 
     // Notify recipients that their asset was returned (blocking)
