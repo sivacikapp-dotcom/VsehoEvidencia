@@ -66,6 +66,7 @@ export const allocationStatusLabels: Record<AllocationStatus, string> = {
   Neprideleny_BCM: "BCM",
   Prideleny_Recipient: "Príjemca",
   Prideleny_Room: "Miestnosť",
+  V_procese: "V procese",
   Vyradeny: "Vyradený",
 }
 
@@ -74,6 +75,7 @@ export const allocationStatusColors: Record<AllocationStatus, string> = {
   Neprideleny_BCM: "bg-yellow-100 text-yellow-700",
   Prideleny_Recipient: "bg-blue-100 text-blue-700",
   Prideleny_Room: "bg-purple-100 text-purple-700",
+  V_procese: "bg-amber-100 text-amber-700",
   Vyradeny: "bg-red-100 text-red-600",
 }
 

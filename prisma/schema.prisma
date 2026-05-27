@@ -63,6 +63,7 @@ enum AllocationStatus {
   Neprideleny_BCM
   Prideleny_Recipient
   Prideleny_Room
+  V_procese
   Vyradeny
 }
 
@@ -134,6 +135,7 @@ enum NotificationType {
   EXPENSE_REPORT_REJECTED
   ACCOUNT_LOCKED
   SUSPICIOUS_LOGIN
+  ASSET_CHANGE_REJECTED
 }
 
 enum AssetNoteType {
@@ -300,6 +302,7 @@ model Notification {
   document        Document?        @relation(fields: [documentId], references: [id], onDelete: SetNull)
   travelOrderId   Int?
   travelOrder     TravelOrder?     @relation(fields: [travelOrderId], references: [id], onDelete: SetNull)
+  createdByUserId Int?
   mustAcknowledge Boolean          @default(false)
   acknowledgedAt  DateTime?
   dismissedAt     DateTime?

@@ -138,30 +138,26 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false, al
               {isAdmin && <p className="text-sm mt-1">Vytvorte prvú agendu tlačidlom vyššie.</p>}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="space-y-2">
               {agendas.map((agenda) => (
                 <div
                   key={agenda.id}
-                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 hover:border-blue-400 dark:hover:border-blue-500 transition-colors group relative"
+                  className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 transition-colors group flex items-center"
                 >
-                  <Link href={`/dashboard/dokumenty/${agenda.id}`} className="block">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
-                        <FolderOpen size={20} className="text-blue-600 dark:text-blue-400" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          {agenda.name}
-                        </h3>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                          {agenda.documentCount}{" "}
-                          {agenda.documentCount === 1 ? "dokument" : agenda.documentCount < 5 ? "dokumenty" : "dokumentov"}
-                        </p>
-                      </div>
-                      <ChevronRight size={16} className="text-gray-400 group-hover:text-blue-500 shrink-0 mt-1" />
+                  <Link href={`/dashboard/dokumenty/${agenda.id}`} className="flex-1 flex items-center gap-4 px-5 py-4 min-w-0">
+                    <div className="p-2 bg-blue-50 dark:bg-blue-900/30 rounded-lg shrink-0">
+                      <FolderOpen size={20} className="text-blue-600 dark:text-blue-400" />
                     </div>
-
-                    <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="min-w-0 w-56 shrink-0">
+                      <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                        {agenda.name}
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {agenda.documentCount}{" "}
+                        {agenda.documentCount === 1 ? "dokument" : agenda.documentCount < 5 ? "dokumenty" : "dokumentov"}
+                      </p>
+                    </div>
+                    <div className="flex-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 min-w-0">
                       <Users size={13} className="shrink-0" />
                       <span className="truncate">
                         {agenda.gestors.length > 0
@@ -170,23 +166,25 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false, al
                         }
                       </span>
                     </div>
-
                     {agenda.isMyAgenda && (
-                      <span className="mt-2 inline-flex items-center text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
+                      <span className="inline-flex items-center text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-2 py-0.5 rounded-full shrink-0">
                         Moja agenda
                       </span>
                     )}
+                    <ChevronRight size={16} className="text-gray-400 group-hover:text-blue-500 shrink-0" />
                   </Link>
 
                   {isAdmin && (
-                    <button
-                      onClick={(e) => { e.preventDefault(); handleDelete(agenda.id, agenda.name) }}
-                      disabled={deleting === agenda.id}
-                      className="absolute top-3 right-3 p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
-                      title="Zmazať agendu"
-                    >
-                      {deleting === agenda.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                    </button>
+                    <div className="pr-3 shrink-0">
+                      <button
+                        onClick={(e) => { e.preventDefault(); handleDelete(agenda.id, agenda.name) }}
+                        disabled={deleting === agenda.id}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
+                        title="Zmazať agendu"
+                      >
+                        {deleting === agenda.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    </div>
                   )}
                 </div>
               ))}

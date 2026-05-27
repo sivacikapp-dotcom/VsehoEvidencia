@@ -177,15 +177,15 @@ export async function assignAsset(
       })
       await prisma.asset.update({
         where: { id: assetId },
-        data: { allocationStatus: "Prideleny_Recipient" },
+        data: { allocationStatus: "V_procese" },
       })
       // Notify new recipient (blocking)
-      await notifyAssetAssigned(assetId, asset.type, asset.name, asset.serialNumber, targetId)
+      await notifyAssetAssigned(assetId, asset.type, asset.name, asset.serialNumber, targetId, parseInt(session.user.id))
       // Notify previous recipients whose asset was taken (blocking)
       await Promise.all(
         prevRecipients
           .filter(r => r.userId !== targetId)
-          .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId))
+          .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id)))
       )
     } else {
       await prisma.assetRoomAssignment.create({
@@ -193,12 +193,12 @@ export async function assignAsset(
       })
       await prisma.asset.update({
         where: { id: assetId },
-        data: { allocationStatus: "Prideleny_Room" },
+        data: { allocationStatus: "V_procese" },
       })
       // Notify previous recipients whose asset was moved to room (blocking)
       await Promise.all(
         prevRecipients.map(r =>
-          notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId)
+          notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id))
         )
       )
       // Notify users with access to this room (informational)
@@ -212,7 +212,8 @@ export async function assignAsset(
     })
     revalidatePath("/dashboard/assets")
     return { success: true }
-  } catch {
+  } catch (e) {
+    console.error("[assignAsset]", e)
     return { error: "Nastala chyba pri prideľovaní. Skúste znova." }
   }
 }
@@ -333,13 +334,13 @@ export async function returnAsset(
     })
     await prisma.asset.update({
       where: { id: assetId },
-      data: { allocationStatus: "Neprideleny_Volny" },
+      data: { allocationStatus: "V_procese" },
     })
 
     // Notify recipients that their asset was returned (blocking)
     await Promise.all(
       prevRecipients.map(r =>
-        notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId)
+        notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id))
       )
     )
     await createAuditLog({

@@ -148,7 +148,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
         {/* header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white">
@@ -177,7 +177,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isForeign ? "grid-cols-3" : "grid-cols-2"}`}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Miesto odchodu <span className="text-red-500">*</span>
@@ -200,21 +200,20 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+              {isForeign && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Navštívené krajiny
+                  </label>
+                  <input
+                    value={form.countries}
+                    onChange={(e) => set("countries", e.target.value)}
+                    placeholder="Napr. Česká republika, Rakúsko"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
             </div>
-
-            {isForeign && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Navštívené krajiny
-                </label>
-                <input
-                  value={form.countries}
-                  onChange={(e) => set("countries", e.target.value)}
-                  placeholder="Napr. Česká republika, Rakúsko"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-            )}
 
             <div className="grid grid-cols-2 gap-4">
               <div>
@@ -314,7 +313,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
           {/* preddavok */}
           <section className="space-y-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Preddavok</h3>
-            <div className="grid grid-cols-2 gap-4">
+            <div className={`grid gap-4 ${isForeign ? "grid-cols-3" : "grid-cols-2"}`}>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Preddavok v EUR
@@ -330,36 +329,31 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
                 />
               </div>
               {isForeign && (
-                <>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Preddavok v cudzej mene
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.01}
-                        value={form.advanceForeign}
-                        onChange={(e) => set("advanceForeign", e.target.value)}
-                        placeholder="0.00"
-                        className="flex-1 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <input
-                        value={form.foreignCurrency}
-                        onChange={(e) => set("foreignCurrency", e.target.value)}
-                        placeholder="CZK"
-                        maxLength={3}
-                        className="w-16 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
-                      />
-                    </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Preddavok v cudzej mene
+                  </label>
+                  <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden focus-within:ring-2 focus-within:ring-blue-500">
+                    <input
+                      type="number"
+                      min={0}
+                      step={0.01}
+                      value={form.advanceForeign}
+                      onChange={(e) => set("advanceForeign", e.target.value)}
+                      placeholder="0.00"
+                      className="flex-1 min-w-0 px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none border-0"
+                    />
+                    <input
+                      value={form.foreignCurrency}
+                      onChange={(e) => set("foreignCurrency", e.target.value)}
+                      placeholder="CZK"
+                      maxLength={3}
+                      className="w-14 shrink-0 px-2 py-2 text-sm bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-300 focus:outline-none border-0 border-l border-gray-200 dark:border-gray-700 text-center font-medium"
+                    />
                   </div>
-                </>
+                </div>
               )}
-            </div>
-
-            {isForeign && (
-              <div className="grid grid-cols-2 gap-4">
+              {isForeign && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Vreckové (max 40 % zahraničnej diéty)
@@ -374,18 +368,21 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
                     className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-                <div className="flex items-center gap-3 pt-6">
-                  <input
-                    type="checkbox"
-                    id="travelInsurance"
-                    checked={form.travelInsurance}
-                    onChange={(e) => set("travelInsurance", e.target.checked)}
-                    className="w-4 h-4 rounded border-gray-300"
-                  />
-                  <label htmlFor="travelInsurance" className="text-sm text-gray-700 dark:text-gray-300">
-                    Zabezpečené cestovné poistenie
-                  </label>
-                </div>
+              )}
+            </div>
+
+            {isForeign && (
+              <div className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="travelInsurance"
+                  checked={form.travelInsurance}
+                  onChange={(e) => set("travelInsurance", e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-300"
+                />
+                <label htmlFor="travelInsurance" className="text-sm text-gray-700 dark:text-gray-300">
+                  Zabezpečené cestovné poistenie
+                </label>
               </div>
             )}
           </section>

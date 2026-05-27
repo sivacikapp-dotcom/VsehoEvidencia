@@ -203,7 +203,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
   const plannedHours = durationHours(order.departureAt, order.returnAt)
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-5">
+    <div className="p-6 max-w-6xl mx-auto space-y-5">
       {isAppAdmin && (
         <div className="flex items-center gap-2 px-4 py-2.5 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-lg text-sm text-violet-700 dark:text-violet-300">
           Režim len na čítanie — finančné hodnoty sú skryté.
@@ -250,9 +250,9 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
         <p className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{actionError}</p>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-5">
         {/* ľavý stĺpec — detail príkazu */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="lg:col-span-3 space-y-4">
           {/* základné info */}
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Cestovný príkaz</h2>
@@ -691,7 +691,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex gap-4">
-      <span className="text-xs text-gray-500 dark:text-gray-400 w-44 shrink-0 pt-0.5">{label}</span>
+      <span className="text-xs text-gray-500 dark:text-gray-400 w-52 shrink-0 pt-0.5">{label}</span>
       <span className="text-sm text-gray-900 dark:text-white">{value}</span>
     </div>
   )
@@ -1092,7 +1092,7 @@ function ExpenseReportView({
                   <>
                     {items.map((item, i) => (
                       <div key={i} className="flex gap-4">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 w-44 shrink-0 pt-0.5">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 w-52 shrink-0 pt-0.5">
                           {item.description || `Ubytovanie ${i + 1}`}
                         </span>
                         <span className="text-sm text-gray-900 dark:text-white">
@@ -1131,7 +1131,7 @@ function ExpenseReportView({
         <Row label="Celkové výdavky" value={fmtEUR(er.totalExpenses)} />
         <Row label="Preddavok prijatý" value={fmtEUR(er.advanceReceived)} />
         <div className="flex gap-4 pt-1">
-          <span className="text-xs text-gray-500 w-44 shrink-0 pt-0.5">
+          <span className="text-xs text-gray-500 w-52 shrink-0 pt-0.5">
             {balance > 0.005 ? "Doplatiť zamestnancovi" : balance < -0.005 ? "Vrátiť preddavok" : "Vyrovnané"}
           </span>
           <span className={`text-sm font-semibold ${balance > 0.005 ? "text-green-600" : balance < -0.005 ? "text-red-600" : "text-gray-600"}`}>

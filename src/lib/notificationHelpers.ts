@@ -53,7 +53,8 @@ export async function notifyAssetAssigned(
   assetType: string,
   assetName: string,
   assetSN: string | null,
-  recipientUserId: number
+  recipientUserId: number,
+  createdByUserId: number
 ) {
   await prisma.notification.create({
     data: {
@@ -62,6 +63,7 @@ export async function notifyAssetAssigned(
       title: "Pridelenie pracovného prostriedku",
       message: `Bol vám pridelený pracovný prostriedok ${assetLabel(assetType, assetName, assetSN)}.`,
       assetId,
+      createdByUserId,
       mustAcknowledge: true,
     },
   })
@@ -72,7 +74,8 @@ export async function notifyAssetReturned(
   assetType: string,
   assetName: string,
   assetSN: string | null,
-  recipientUserId: number
+  recipientUserId: number,
+  createdByUserId: number
 ) {
   await prisma.notification.create({
     data: {
@@ -81,6 +84,7 @@ export async function notifyAssetReturned(
       title: "Odobratie pracovného prostriedku",
       message: `Pracovný prostriedok ${assetLabel(assetType, assetName, assetSN)} vám bol odobratý.`,
       assetId,
+      createdByUserId,
       mustAcknowledge: true,
     },
   })

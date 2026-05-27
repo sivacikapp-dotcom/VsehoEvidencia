@@ -23,6 +23,7 @@ import {
   AlertTriangle,
   Plus,
   MessageSquare,
+  Clock,
 } from "lucide-react"
 import type { AssetNoteType } from "@/generated/prisma/enums"
 import {
@@ -97,8 +98,14 @@ type NoteEntry = {
   updatedAt: string
 }
 
+interface PendingConfirmation {
+  type: "ASSET_ASSIGNED" | "ASSET_RETURNED"
+  userName: string
+}
+
 interface Props {
   backHref: string
+  pendingConfirmations: PendingConfirmation[]
   asset: {
     id: number
     version: number
@@ -1348,6 +1355,7 @@ function AttachmentsPanel({
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function AssetDetailClient({
   backHref,
+  pendingConfirmations,
   asset,
   recipientHistory,
   roomHistory,
@@ -1380,6 +1388,27 @@ export default function AssetDetailClient({
           Režim len na čítanie — údaje majetku sú skryté okrem ID.
         </div>
       )}
+      {/* V procese banner */}
+      {pendingConfirmations.length > 0 && (
+        <div className="mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <Clock size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">Zmena v procese</p>
+              <ul className="mt-1 space-y-0.5">
+                {pendingConfirmations.map((pc, i) => (
+                  <li key={i} className="text-xs text-amber-700 dark:text-amber-400">
+                    {pc.type === "ASSET_ASSIGNED"
+                      ? `Čaká sa na potvrdenie pridelenia od: ${pc.userName}`
+                      : `Čaká sa na potvrdenie odobrania od: ${pc.userName}`}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Breadcrumb */}
       <Link
         href={backHref}

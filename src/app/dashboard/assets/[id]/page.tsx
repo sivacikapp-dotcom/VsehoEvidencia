@@ -98,10 +98,24 @@ export default async function AssetDetailPage({
     updatedAt: n.updatedAt.toISOString(),
   }))
 
+  // Pending confirmations for V_procese assets
+  const pendingNotificationsRaw = asset.allocationStatus === "V_procese"
+    ? await prisma.notification.findMany({
+        where: { assetId, mustAcknowledge: true, acknowledgedAt: null },
+        include: { user: { select: { firstName: true, lastName: true } } },
+        orderBy: { createdAt: "asc" },
+      })
+    : []
+  const pendingConfirmations = pendingNotificationsRaw.map((n) => ({
+    type: n.type as "ASSET_ASSIGNED" | "ASSET_RETURNED",
+    userName: `${n.user.firstName} ${n.user.lastName}`,
+  }))
+
   const H = HIDDEN
   return (
     <AssetDetailClient
       backHref={backHref}
+      pendingConfirmations={pendingConfirmations}
       asset={{
         id: asset.id,
         version: asset.version,

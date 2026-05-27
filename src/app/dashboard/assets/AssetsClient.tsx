@@ -3,7 +3,7 @@
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { Plus, Search, ChevronDown, ChevronUp, ArrowUpDown, Loader2, RotateCcw, UserPlus, ExternalLink, X } from "lucide-react"
+import { Plus, Search, ChevronDown, ChevronUp, ArrowUpDown, Loader2, RotateCcw, UserPlus, ExternalLink, X, Clock as ClockIcon } from "lucide-react"
 import NewAssetModal from "./NewAssetModal"
 import AssignModal from "./AssignModal"
 import { returnAsset } from "./actions"
@@ -322,12 +322,24 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
       case "functionStatus": return <Badge label={functionStatusLabels[a.functionStatus]} colorCls={functionStatusColors[a.functionStatus]} />
       case "kind": return <span className="text-gray-500 dark:text-gray-400">{assetKindLabels[a.kind as keyof typeof assetKindLabels] ?? a.kind}</span>
       case "acquisitionDate": return a.acquisitionDate ? <span className="text-gray-500 dark:text-gray-400">{a.acquisitionDate}</span> : <span className="text-gray-300 dark:text-gray-600">—</span>
-      case "assigned":
-        return a.currentRecipient
-          ? <span className="text-blue-700 dark:text-blue-400 font-medium">{a.currentRecipient.name}</span>
-          : a.currentRoom
-            ? <span className="text-purple-700 dark:text-purple-400 font-medium">{a.currentRoom.name}</span>
-            : <span className="text-gray-300 dark:text-gray-600">—</span>
+      case "assigned": {
+        const isPending = a.allocationStatus === "V_procese"
+        const name = a.currentRecipient?.name ?? a.currentRoom?.name ?? null
+        const color = a.currentRecipient
+          ? "text-blue-700 dark:text-blue-400"
+          : "text-purple-700 dark:text-purple-400"
+        if (!name) return <span className="text-gray-300 dark:text-gray-600">—</span>
+        return (
+          <span className={`inline-flex items-center gap-1.5 font-medium ${color}`}>
+            {name}
+            {isPending && (
+              <span title="Čaká sa na potvrdenie">
+                <ClockIcon size={12} className="text-amber-500 shrink-0" />
+              </span>
+            )}
+          </span>
+        )
+      }
       case "isSecurity": return a.isSecurity
         ? <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">Bezpečnostný</span>
         : <span className="text-gray-300 dark:text-gray-600">—</span>
@@ -376,7 +388,7 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
               className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md">
               <ExternalLink size={14} />
             </Link>
-            {isManager && !isAppAdmin && (
+            {isManager && !isAppAdmin && a.allocationStatus !== "V_procese" && (
               <button onClick={() => setAssignAsset(a)} title="Priradiť"
                 className="p-1.5 text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-md">
                 <UserPlus size={14} />

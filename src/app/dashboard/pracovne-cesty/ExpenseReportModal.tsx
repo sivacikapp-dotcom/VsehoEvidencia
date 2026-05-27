@@ -19,8 +19,8 @@ import {
 } from "@/lib/travelUtils"
 import { transportMeansLabels } from "@/lib/labels"
 
-type TransportItem = { id: string; description: string; amount: string }
-type OtherExpenseItem = { id: string; description: string; amount: string }
+type TransportItem = { id: string; description: string; amount: string; currForeign: boolean }
+type OtherExpenseItem = { id: string; description: string; amount: string; currForeign: boolean }
 type AccommodationItem = { id: string; description: string; price: string; companyCard: string; employee: string }
 
 interface Props {
@@ -169,22 +169,22 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
     if (existing?.publicTransportItems) {
       try {
         return (JSON.parse(existing.publicTransportItems) as { description: string; amount: number }[])
-          .map((item, i) => ({ id: String(i), description: item.description, amount: String(item.amount) }))
+          .map((item, i) => ({ id: String(i), description: item.description, amount: String(item.amount), currForeign: false }))
       } catch { return [] }
     }
     if (existing?.publicTransportCost != null && existing.publicTransportCost > 0) {
-      return [{ id: "0", description: "", amount: String(existing.publicTransportCost) }]
+      return [{ id: "0", description: "", amount: String(existing.publicTransportCost), currForeign: false }]
     }
     return []
   })
 
   const addPubTransItem = useCallback(() => {
-    setPubTransItems(prev => [...prev, { id: String(Date.now()), description: "", amount: "" }])
+    setPubTransItems(prev => [...prev, { id: String(Date.now()), description: "", amount: "", currForeign: false }])
   }, [])
   const removePubTransItem = useCallback((id: string) => {
     setPubTransItems(prev => prev.filter(i => i.id !== id))
   }, [])
-  const updatePubTransItem = useCallback((id: string, field: "description" | "amount", value: string) => {
+  const updatePubTransItem = useCallback((id: string, field: keyof Omit<TransportItem, "id">, value: string | boolean) => {
     setPubTransItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }, [])
 
@@ -249,23 +249,23 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
     if (existing?.otherExpenseItems) {
       try {
         return (JSON.parse(existing.otherExpenseItems) as { description: string; amount: number }[])
-          .map((item, i) => ({ id: String(i), description: item.description, amount: String(item.amount) }))
+          .map((item, i) => ({ id: String(i), description: item.description, amount: String(item.amount), currForeign: false }))
       } catch { return [] }
     }
     // backward compat — ak existuje starý záznam s otherExpenses
     if (existing?.otherExpenses != null && existing.otherExpenses > 0) {
-      return [{ id: "0", description: existing.otherExpensesNote ?? "Iné", amount: String(existing.otherExpenses) }]
+      return [{ id: "0", description: existing.otherExpensesNote ?? "Iné", amount: String(existing.otherExpenses), currForeign: false }]
     }
     return []
   })
 
   const addOtherItem = useCallback(() => {
-    setOtherItems(prev => [...prev, { id: String(Date.now()), description: "", amount: "" }])
+    setOtherItems(prev => [...prev, { id: String(Date.now()), description: "", amount: "", currForeign: false }])
   }, [])
   const removeOtherItem = useCallback((id: string) => {
     setOtherItems(prev => prev.filter(i => i.id !== id))
   }, [])
-  const updateOtherItem = useCallback((id: string, field: "description" | "amount", value: string) => {
+  const updateOtherItem = useCallback((id: string, field: keyof Omit<OtherExpenseItem, "id">, value: string | boolean) => {
     setOtherItems(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i))
   }, [])
 
@@ -274,6 +274,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
   const [foreignDiet, setForeignDiet] = useState(existing?.foreignDiet != null ? String(existing.foreignDiet) : "")
   const [pocketMoneyPaid, setPocketMoneyPaid] = useState(existing?.pocketMoneyPaid != null ? String(existing.pocketMoneyPaid) : "")
   const [exchangeRate, setExchangeRate] = useState(existing?.exchangeRate != null ? String(existing.exchangeRate) : "")
+  const [fuelPriceCurrForeign, setFuelPriceCurrForeign] = useState(false)
+  const [taxiCurrForeign, setTaxiCurrForeign] = useState(false)
+  const [parkingCurrForeign, setParkingCurrForeign] = useState(false)
+  const [accommodationCurrForeign, setAccommodationCurrForeign] = useState(false)
 
   const dayInfos: DayInfo[] = buildDayInfos(actualDep, actualRet, dayMeals, r)
   const totalDietAmount = isForeign
@@ -294,18 +298,35 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
   const [pendingMode, setPendingMode] = useState<"save" | "saveAndSend" | null>(null)
   const [, startTransition] = useTransition()
 
+  const currCode = order.foreignCurrency ?? "?"
+  // 1 jednotka cudzej meny = foreignExRate EUR (len pri zahraničnej ceste)
+  const foreignExRate = isForeign ? 1 / (parseFloat(exchangeRate) || 1) : 1
+  const applyRate = (amount: number, isF: boolean) => isF ? amount * foreignExRate : amount
+
+  const fuelPricePerLEur = applyRate(parseFloat(fuelPricePerL) || 0, fuelPriceCurrForeign)
   const kmComp = ownVehicle && kmDriven && kmBasicRate
-    ? parseFloat(kmDriven) * (parseFloat(kmBasicRate) + ((parseFloat(fuelConsumption) || 0) / 100) * (parseFloat(fuelPricePerL) || 0))
+    ? parseFloat(kmDriven) * (parseFloat(kmBasicRate) + ((parseFloat(fuelConsumption) || 0) / 100) * fuelPricePerLEur)
     : 0
 
-  const totalExpenses =
-    totalDietAmount +
-    kmComp +
-    pubTransTotal +
-    (parseFloat(taxiCost) || 0) +
-    effectiveAccommodation +
-    (parseFloat(parking) || 0) +
-    otherItemsTotal
+  const pubTransForeignRaw = pubTransItems.filter(i => i.currForeign).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+  const pubTransEurDirect = pubTransItems.filter(i => !i.currForeign).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+  const pubTransTotalEur = pubTransEurDirect + pubTransForeignRaw * foreignExRate
+
+  const taxiRaw = parseFloat(taxiCost) || 0
+  const taxiCostEur = applyRate(taxiRaw, taxiCurrForeign)
+
+  const accommodationEur = applyRate(effectiveAccommodation, accommodationCurrForeign)
+
+  const parkingRaw = parseFloat(parking) || 0
+  const parkingEur = applyRate(parkingRaw, parkingCurrForeign)
+
+  const otherForeignRaw = otherItems.filter(i => i.currForeign).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+  const otherEurDirect = otherItems.filter(i => !i.currForeign).reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+  const otherItemsTotalEur = otherEurDirect + otherForeignRaw * foreignExRate
+
+  const convertibleTotal = pubTransTotalEur + taxiCostEur + accommodationEur + parkingEur + otherItemsTotalEur
+
+  const totalExpenses = totalDietAmount + kmComp + convertibleTotal
 
   const balance = totalExpenses - (parseFloat(advanceReceived) || 0)
 
@@ -329,26 +350,26 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
       kmDriven: kmDriven ? parseFloat(kmDriven) : undefined,
       kmBasicRate: kmBasicRate ? parseFloat(kmBasicRate) : undefined,
       fuelConsumption: fuelConsumption ? parseFloat(fuelConsumption) : undefined,
-      fuelPricePerL: fuelPricePerL ? parseFloat(fuelPricePerL) : undefined,
+      fuelPricePerL: fuelPricePerL ? parseFloat(fuelPricePerLEur.toFixed(4)) : undefined,
       kmCompensation: ownVehicle && kmComp ? parseFloat(kmComp.toFixed(4)) : undefined,
-      publicTransportCost: pubTransTotal > 0 ? parseFloat(pubTransTotal.toFixed(2)) : undefined,
+      publicTransportCost: pubTransTotalEur > 0 ? parseFloat(pubTransTotalEur.toFixed(2)) : undefined,
       publicTransportItems: pubTransItems.length > 0
-        ? JSON.stringify(pubTransItems.map(i => ({ description: i.description, amount: parseFloat(i.amount) || 0 })))
+        ? JSON.stringify(pubTransItems.map(i => ({ description: i.description, amount: parseFloat((applyRate(parseFloat(i.amount) || 0, i.currForeign)).toFixed(4)) })))
         : undefined,
-      taxiCost: taxiCost ? parseFloat(taxiCost) : undefined,
-      accommodation: effectiveAccommodation > 0 ? parseFloat(effectiveAccommodation.toFixed(2)) : undefined,
+      taxiCost: taxiCost ? parseFloat(taxiCostEur.toFixed(2)) : undefined,
+      accommodation: accommodationEur > 0 ? parseFloat(accommodationEur.toFixed(2)) : undefined,
       accommodationItems: accommodationMode === "detailed" && accommodationItems.length > 0
         ? JSON.stringify(accommodationItems.map(i => ({
             description: i.description,
-            price: parseFloat(i.price) || 0,
-            companyCard: parseFloat(i.companyCard) || 0,
-            employee: parseFloat(i.employee) || 0,
+            price: parseFloat((applyRate(parseFloat(i.price) || 0, accommodationCurrForeign)).toFixed(4)),
+            companyCard: parseFloat((applyRate(parseFloat(i.companyCard) || 0, accommodationCurrForeign)).toFixed(4)),
+            employee: parseFloat((applyRate(parseFloat(i.employee) || 0, accommodationCurrForeign)).toFixed(4)),
           })))
         : undefined,
-      parking: parking ? parseFloat(parking) : undefined,
-      otherExpenses: otherItemsTotal > 0 ? parseFloat(otherItemsTotal.toFixed(2)) : undefined,
+      parking: parking ? parseFloat(parkingEur.toFixed(2)) : undefined,
+      otherExpenses: otherItemsTotalEur > 0 ? parseFloat(otherItemsTotalEur.toFixed(2)) : undefined,
       otherExpenseItems: otherItems.length > 0
-        ? JSON.stringify(otherItems.map(i => ({ description: i.description, amount: parseFloat(i.amount) || 0 })))
+        ? JSON.stringify(otherItems.map(i => ({ description: i.description, amount: parseFloat((applyRate(parseFloat(i.amount) || 0, i.currForeign)).toFixed(4)) })))
         : undefined,
       foreignDiet: isForeign && foreignDiet ? parseFloat(foreignDiet) : undefined,
       pocketMoneyPaid: isForeign && pocketMoneyPaid ? parseFloat(pocketMoneyPaid) : undefined,
@@ -378,7 +399,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[92vh] flex flex-col">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-5xl max-h-[92vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-base font-semibold text-gray-900 dark:text-white">
             Vyúčtovanie pracovnej cesty
@@ -446,7 +467,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                       Vlastné vozidlo — náhrada za km (§7 zák. 283/2002 Z.z.)
                     </p>
                     {transportChanged && (
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-3 gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Druh vozidla</label>
                           <select
@@ -474,7 +495,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                         <MoneyInput label="Objem motora (cm³)" value={actualEngineVolume} onChange={setActualEngineVolume} step={1} disabled={readOnly} />
                       </div>
                     )}
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-4 gap-4">
                       <MoneyInput label="Počet najazdených km" value={kmDriven} onChange={setKmDriven} step={0.1} disabled={readOnly} />
                       <MoneyInput
                         label="Základná náhrada (€/km)"
@@ -485,7 +506,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                         hint={`Sadzba podľa §7: ${kmRateLabel(effectiveVehicleCategory, effectiveEngineVolume, r)}`}
                       />
                       <MoneyInput label="Spotreba PHM (l/100 km)" value={fuelConsumption} onChange={setFuelConsumption} step={0.01} disabled={readOnly} />
-                      <MoneyInput label="Cena PHM (€/l)" value={fuelPricePerL} onChange={setFuelPricePerL} step={0.001} disabled={readOnly} />
+                      <div>
+                        <MoneyInput label={`Cena PHM (${isForeign && fuelPriceCurrForeign ? currCode : "EUR"}/l)`} value={fuelPricePerL} onChange={setFuelPricePerL} step={0.001} disabled={readOnly} />
+                        {isForeign && <div className="mt-1"><CurrencyToggle value={fuelPriceCurrForeign} onChange={setFuelPriceCurrForeign} currCode={currCode} disabled={readOnly} /></div>}
+                      </div>
                     </div>
                     {kmComp > 0 && (
                       <div className="flex items-center justify-between bg-blue-50 dark:bg-blue-900/20 rounded-lg px-4 py-2">
@@ -522,7 +546,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                     )}
 
                     {pubTransItems.map((item) => (
-                      <div key={item.id} className="flex gap-2 items-start">
+                      <div key={item.id} className="flex gap-2 items-center">
                         <input
                           type="text"
                           value={item.description}
@@ -541,6 +565,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                           placeholder="0.00"
                           className="w-28 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                         />
+                        {isForeign
+                          ? <CurrencyToggle value={item.currForeign} onChange={(v) => updatePubTransItem(item.id, "currForeign", v)} currCode={currCode} disabled={readOnly} />
+                          : <span className="text-xs text-gray-400 dark:text-gray-500 self-center shrink-0">EUR</span>
+                        }
                         {!readOnly && (
                           <button
                             type="button"
@@ -556,7 +584,13 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                     {pubTransItems.length > 0 && (
                       <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
                         <span>Verejná doprava spolu</span>
-                        <span className="font-medium">{pubTransTotal.toFixed(2)} €</span>
+                        <span className="font-medium">
+                          {pubTransForeignRaw > 0 && pubTransEurDirect > 0
+                            ? <>{pubTransForeignRaw.toFixed(2)} {currCode} + {pubTransEurDirect.toFixed(2)} € <span className="text-gray-400 font-normal">= {pubTransTotalEur.toFixed(2)} €</span></>
+                            : pubTransForeignRaw > 0
+                            ? <>{pubTransForeignRaw.toFixed(2)} {currCode} <span className="text-gray-400 font-normal">= {pubTransTotalEur.toFixed(2)} €</span></>
+                            : `${pubTransTotalEur.toFixed(2)} €`}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -566,14 +600,17 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                 {actualTransport.includes("TAXIK") && (
                   <div className="px-4 py-4 space-y-3">
                     <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">Taxi</p>
-                    <div className="grid grid-cols-2 gap-4">
-                      <MoneyInput
-                        label="Náklady na taxi (€)"
-                        value={taxiCost}
-                        onChange={setTaxiCost}
-                        disabled={readOnly}
-                        hint="Skutočne zaplatená suma za taxi"
-                      />
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1 max-w-xs">
+                        <MoneyInput
+                          label={`Náklady na taxi (${isForeign && taxiCurrForeign ? currCode : "EUR"})`}
+                          value={taxiCost}
+                          onChange={setTaxiCost}
+                          disabled={readOnly}
+                          hint="Skutočne zaplatená suma za taxi"
+                        />
+                      </div>
+                      {isForeign && <div className="pb-0.5"><CurrencyToggle value={taxiCurrForeign} onChange={setTaxiCurrForeign} currCode={currCode} disabled={readOnly} /></div>}
                     </div>
                   </div>
                 )}
@@ -684,7 +721,25 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
               <div className="grid grid-cols-2 gap-4">
                 <MoneyInput label={`Zahraničná diéta (${order.foreignCurrency ?? "cudzia mena"})`} value={foreignDiet} onChange={setForeignDiet} disabled={readOnly} />
                 <MoneyInput label="Vreckové vyplatené" value={pocketMoneyPaid} onChange={setPocketMoneyPaid} disabled={readOnly} />
-                <MoneyInput label="Výmenný kurz (1 EUR = ?)" value={exchangeRate} onChange={setExchangeRate} step={0.0001} disabled={readOnly} />
+              </div>
+            </section>
+          )}
+
+          {/* výmenný kurz */}
+          {isForeign && (
+            <section className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+              <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Výmenný kurz</h3>
+              </div>
+              <div className="px-4 py-4 flex flex-wrap items-end gap-6">
+                <div className="w-52">
+                  <MoneyInput label="Výmenný kurz (1 EUR = ?)" value={exchangeRate} onChange={setExchangeRate} step={0.0001} disabled={readOnly} />
+                </div>
+                {exchangeRate && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500 self-end pb-1">
+                    1 {currCode} = {(1 / (parseFloat(exchangeRate) || 1)).toFixed(4)} EUR
+                  </p>
+                )}
               </div>
             </section>
           )}
@@ -695,7 +750,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
             {/* Ubytovanie */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ubytovanie</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Ubytovanie</span>
+                  {isForeign && <CurrencyToggle value={accommodationCurrForeign} onChange={setAccommodationCurrForeign} currCode={currCode} disabled={readOnly} />}
+                </div>
                 {!readOnly && (
                   <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs">
                     <button
@@ -735,9 +793,9 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                   {/* Hlavička tabuľky */}
                   <div className="grid grid-cols-[1fr_5rem_5rem_5rem_2rem] gap-0 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 py-2">
                     <span className="text-xs font-medium text-gray-500">Položka</span>
-                    <span className="text-xs font-medium text-gray-500 text-right">Cena</span>
-                    <span className="text-xs font-medium text-gray-500 text-right">Firemná karta</span>
-                    <span className="text-xs font-medium text-gray-500 text-right">Zamestnanec</span>
+                    <span className="text-xs font-medium text-gray-500 text-right">Cena ({isForeign && accommodationCurrForeign ? currCode : "EUR"})</span>
+                    <span className="text-xs font-medium text-gray-500 text-right">Firemná karta ({isForeign && accommodationCurrForeign ? currCode : "EUR"})</span>
+                    <span className="text-xs font-medium text-gray-500 text-right">Zamestnanec ({isForeign && accommodationCurrForeign ? currCode : "EUR"})</span>
                     <span />
                   </div>
 
@@ -803,15 +861,22 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                     ) : <span />}
                     <div className="flex items-center gap-3 text-xs">
                       <span className="text-gray-500">Zamestnanec spolu:</span>
-                      <span className="font-semibold text-gray-900 dark:text-white">{accItemsEmployeeTotal.toFixed(2)} €</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {accommodationCurrForeign
+                          ? <>{accItemsEmployeeTotal.toFixed(2)} {currCode} <span className="text-gray-400 text-xs font-normal">= {accommodationEur.toFixed(2)} €</span></>
+                          : `${accommodationEur.toFixed(2)} €`}
+                      </span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <MoneyInput label="Parkovné (€)" value={parking} onChange={setParking} disabled={readOnly} />
+            <div className="flex items-end gap-3">
+              <div className="flex-1 max-w-xs">
+                <MoneyInput label={`Parkovné (${isForeign && parkingCurrForeign ? currCode : "EUR"})`} value={parking} onChange={setParking} disabled={readOnly} />
+              </div>
+              {isForeign && <div className="pb-0.5"><CurrencyToggle value={parkingCurrForeign} onChange={setParkingCurrForeign} currCode={currCode} disabled={readOnly} /></div>}
             </div>
 
             {/* Iné výdavky — dynamický zoznam */}
@@ -837,7 +902,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
               )}
 
               {otherItems.map((item) => (
-                <div key={item.id} className="flex gap-2 items-start">
+                <div key={item.id} className="flex gap-2 items-center">
                   <input
                     type="text"
                     value={item.description}
@@ -856,6 +921,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                     placeholder="0.00"
                     className="w-28 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
                   />
+                  {isForeign
+                    ? <CurrencyToggle value={item.currForeign} onChange={(v) => updateOtherItem(item.id, "currForeign", v)} currCode={currCode} disabled={readOnly} />
+                    : <span className="text-xs text-gray-400 dark:text-gray-500 self-center shrink-0">EUR</span>
+                  }
                   {!readOnly && (
                     <button
                       type="button"
@@ -871,7 +940,13 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
               {otherItems.length > 0 && (
                 <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
                   <span>Iné výdavky spolu</span>
-                  <span className="font-medium">{otherItemsTotal.toFixed(2)} €</span>
+                  <span className="font-medium">
+                    {otherForeignRaw > 0 && otherEurDirect > 0
+                      ? <>{otherForeignRaw.toFixed(2)} {currCode} + {otherEurDirect.toFixed(2)} € <span className="text-gray-400 font-normal">= {otherItemsTotalEur.toFixed(2)} €</span></>
+                      : otherForeignRaw > 0
+                      ? <>{otherForeignRaw.toFixed(2)} {currCode} <span className="text-gray-400 font-normal">= {otherItemsTotalEur.toFixed(2)} €</span></>
+                      : `${otherItemsTotalEur.toFixed(2)} €`}
+                  </span>
                 </div>
               )}
             </div>
@@ -881,13 +956,18 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
           <section className="space-y-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-400">Rekapitulácia</h3>
             <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 space-y-1.5 text-sm">
-              <SummaryRow label="Diéty" value={totalDietAmount} />
-              {ownVehicle && <SummaryRow label="Náhrada za km" value={kmComp} />}
-              <SummaryRow label="Verejná doprava" value={pubTransTotal} />
-              <SummaryRow label="Taxi" value={parseFloat(taxiCost) || 0} />
-              <SummaryRow label="Ubytovanie" value={parseFloat(accommodation) || 0} />
-              <SummaryRow label="Parkovné" value={parseFloat(parking) || 0} />
-              <SummaryRow label="Iné výdavky" value={otherItemsTotal} />
+              {isForeign && exchangeRate && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 pb-1">
+                  Výmenný kurz: 1 EUR = {exchangeRate} {currCode}
+                </p>
+              )}
+              <SummaryRow label="Diéty" eurTotal={totalDietAmount} />
+              {ownVehicle && <SummaryRow label="Náhrada za km" eurTotal={kmComp} />}
+              <SummaryRow label="Verejná doprava" eurTotal={pubTransTotalEur} foreignRaw={pubTransForeignRaw > 0 ? pubTransForeignRaw : undefined} eurDirect={pubTransEurDirect > 0 ? pubTransEurDirect : undefined} curr={currCode} />
+              <SummaryRow label="Taxi" eurTotal={taxiCostEur} foreignRaw={taxiCurrForeign ? taxiRaw : undefined} curr={currCode} />
+              <SummaryRow label="Ubytovanie" eurTotal={accommodationEur} foreignRaw={accommodationCurrForeign ? effectiveAccommodation : undefined} curr={currCode} />
+              <SummaryRow label="Parkovné" eurTotal={parkingEur} foreignRaw={parkingCurrForeign ? parkingRaw : undefined} curr={currCode} />
+              <SummaryRow label="Iné výdavky" eurTotal={otherItemsTotalEur} foreignRaw={otherForeignRaw > 0 ? otherForeignRaw : undefined} eurDirect={otherEurDirect > 0 ? otherEurDirect : undefined} curr={currCode} />
               <div className="border-t border-gray-200 dark:border-gray-700 pt-2 flex justify-between font-semibold">
                 <span className="text-gray-700 dark:text-gray-300">Celkové výdavky</span>
                 <span className="text-gray-900 dark:text-white">{totalExpenses.toFixed(2)} €</span>
@@ -1004,12 +1084,51 @@ function MoneyInput({ label, value, onChange, step = 0.01, disabled, hint }: {
   )
 }
 
-function SummaryRow({ label, value }: { label: string; value: number }) {
-  if (value === 0) return null
+function SummaryRow({ label, eurTotal, foreignRaw, eurDirect, curr }: {
+  label: string; eurTotal: number; foreignRaw?: number; eurDirect?: number; curr?: string
+}) {
+  if (eurTotal === 0 && (!foreignRaw || foreignRaw === 0)) return null
+  const hasForeign = (foreignRaw ?? 0) > 0 && curr
+  const hasEurDirect = (eurDirect ?? 0) > 0
   return (
     <div className="flex justify-between text-gray-600 dark:text-gray-400">
       <span>{label}</span>
-      <span>{value.toFixed(2)} €</span>
+      <span className="text-right">
+        {hasForeign && hasEurDirect ? (
+          <>
+            <span className="text-xs">{foreignRaw!.toFixed(2)} {curr} + {eurDirect!.toFixed(2)} €</span>
+            {" "}<span className="text-gray-400 dark:text-gray-500 text-xs">= {eurTotal.toFixed(2)} €</span>
+          </>
+        ) : hasForeign ? (
+          <>
+            {foreignRaw!.toFixed(2)} <span className="text-xs">{curr}</span>
+            {" "}<span className="text-gray-400 dark:text-gray-500 text-xs">= {eurTotal.toFixed(2)} €</span>
+          </>
+        ) : (
+          `${eurTotal.toFixed(2)} €`
+        )}
+      </span>
+    </div>
+  )
+}
+
+function CurrencyToggle({ value, onChange, currCode, disabled }: {
+  value: boolean; onChange: (v: boolean) => void; currCode: string; disabled?: boolean
+}) {
+  return (
+    <div className="flex rounded border border-gray-200 dark:border-gray-700 text-xs overflow-hidden shrink-0">
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        disabled={disabled}
+        className={`px-2 py-1.5 transition-colors ${!value ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+      >EUR</button>
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        disabled={disabled}
+        className={`px-2 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${value ? "bg-blue-600 text-white" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+      >{currCode}</button>
     </div>
   )
 }
