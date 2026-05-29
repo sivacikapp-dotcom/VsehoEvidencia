@@ -38,19 +38,19 @@ export async function GET(
       const userDoc = await prisma.user.findUnique({
         where: { id: userId },
         select: {
-          docRole: true,
+          roles: true,
           agendaGestors: { select: { agendaId: true } },
           documentGestors: { select: { documentId: true } },
           attachmentAccesses: { select: { attachmentId: true } },
         },
       })
-      const isAdmin = userDoc?.docRole === "SPRAVCA_DOKUMENTOV"
-      const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === parentDoc.agendaId)
-      const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === parentDoc.id)
+      const isAdmin = userDoc?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+      const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === parentDoc.agendaId) ?? false
+      const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === parentDoc.id) ?? false
 
       // For attachment files: check attachment-level access; for document files: check document access
       const hasAccess = attachment
-        ? userDoc?.attachmentAccesses.some((a) => a.attachmentId === attachment.id)
+        ? (userDoc?.attachmentAccesses.some((a) => a.attachmentId === attachment.id) ?? false)
         : await prisma.documentAccess.findFirst({ where: { userId, documentId: parentDoc.id } }).then(Boolean)
 
       if (!isAdmin && !isAgendaGestor && !isDocGestor && !hasAccess) {

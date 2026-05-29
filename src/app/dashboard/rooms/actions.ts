@@ -10,7 +10,7 @@ type Result = { error?: string; success?: boolean }
 
 export async function createRoom(name: string): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie." }
   }
 
@@ -36,7 +36,7 @@ export async function createRoom(name: string): Promise<Result> {
 
 export async function deleteRoom(roomId: number): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie." }
   }
 
@@ -70,7 +70,7 @@ export async function setRoomAccess(
   userIds: number[]
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie." }
   }
 

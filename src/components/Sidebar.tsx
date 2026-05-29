@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   LayoutDashboard,
   Package,
@@ -19,8 +19,8 @@ import {
   Inbox,
   FileText,
   Folders,
-  BookOpen,
   ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react"
 import type { Role } from "@/generated/prisma/enums"
 
@@ -52,16 +52,17 @@ const navSections: NavSection[] = [
   {
     title: "Evidencia majetku",
     items: [
-      { href: "/dashboard/assets",    label: "Majetok",         icon: Package,    color: "text-orange-400",  roles: ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/assets",    label: "Majetok",         icon: Package,    color: "text-orange-400",  roles: ["SPRAVCA_MAJETKU", "BEZPECNOSTNY_PRACOVNIK", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/my-assets", label: "Moje priradenia", icon: User,       color: "text-violet-400",  roles: ["PRIJEMCA"] },
       { href: "/dashboard/my-card",   label: "Moja karta",      icon: CreditCard, color: "text-emerald-400", roles: [] },
-      { href: "/dashboard/rooms",     label: "Miestnosti",      icon: Building2,  color: "text-cyan-400",    roles: ["SPRAVCA_KARIET", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/rooms",     label: "Miestnosti",      icon: Building2,  color: "text-cyan-400",    roles: ["SPRAVCA_MAJETKU", "SPRAVCA_APLIKACIE"] },
     ],
   },
   {
     title: "Interné dokumenty",
     items: [
-      { href: "/dashboard/dokumenty", label: "Dokumenty", icon: FolderOpen, color: "text-blue-400", roles: [] },
+      { href: "/dashboard/dokumenty",            label: "Dokumenty",  icon: FolderOpen,        color: "text-blue-400",  roles: [] },
+      { href: "/dashboard/dokumenty/nastavenia", label: "Nastavenia", icon: SlidersHorizontal, color: "text-slate-400", roles: ["SPRAVCA_DOKUMENTOV"] },
     ],
   },
   {
@@ -69,7 +70,7 @@ const navSections: NavSection[] = [
     items: [
       { href: "/dashboard/pracovne-cesty",            label: "Cestovné príkazy", icon: Plane,      color: "text-sky-400",    roles: [] },
       { href: "/dashboard/pracovne-cesty/vyuctovane", label: "Vyúčtované cesty", icon: CheckCheck, color: "text-green-400",  roles: [] },
-      { href: "/dashboard/nastavenia/sadzby",         label: "Sadzby PC",        icon: Settings,   color: "text-amber-400",  roles: ["SPRAVCA_PC", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/nastavenia/sadzby",         label: "Sadzby PC",        icon: Settings,   color: "text-amber-400",  roles: ["SPRAVCA_PRACOVNYCH_CIEST", "SPRAVCA_APLIKACIE"] },
     ],
   },
   {
@@ -78,15 +79,15 @@ const navSections: NavSection[] = [
       { href: "/dashboard/registratura/podatelna", label: "Podateľňa",          icon: Inbox,       color: "text-teal-400",   roles: ["PRACOVNIK_PODATELNE", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/zaznamy",   label: "Záznamy",             icon: FileText,    color: "text-indigo-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/spisy",     label: "Spisy",               icon: Folders,     color: "text-violet-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
-      { href: "/dashboard/registratura/plan",      label: "Registratúrny plán",  icon: BookOpen,    color: "text-amber-400",  roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
-      { href: "/dashboard/registratura/admin",     label: "Správa rolí",         icon: ShieldCheck, color: "text-rose-400",   roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/admin",      label: "Správa rolí",  icon: ShieldCheck,       color: "text-rose-400",  roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/nastavenia", label: "Nastavenia",  icon: SlidersHorizontal, color: "text-slate-400", roles: ["SPRAVCA_REGISTRATURY"] },
     ],
   },
   {
     title: "Nastavenia",
     items: [
       { href: "/dashboard/users",      label: "Používatelia", icon: Users,      color: "text-purple-400", roles: [] },
-      { href: "/dashboard/admin/logs", label: "Audit Log",    icon: ScrollText, color: "text-rose-400",   roles: ["SPRAVCA_KARIET", "SPRAVCA_ROLI", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/admin/logs", label: "Audit Log",    icon: ScrollText, color: "text-rose-400",   roles: ["SPRAVCA_MAJETKU", "SPRAVCA_APLIKACIE"] },
     ],
   },
 ]
@@ -94,15 +95,16 @@ const navSections: NavSection[] = [
 export default function Sidebar({ user }: SidebarProps) {
   const pathname = usePathname()
 
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => {
-    if (typeof window === "undefined") return {}
+  const [mounted, setMounted] = useState(false)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    setMounted(true)
     try {
       const stored = localStorage.getItem("ve_sidebar_collapsed")
-      return stored ? JSON.parse(stored) : {}
-    } catch {
-      return {}
-    }
-  })
+      if (stored) setCollapsed(JSON.parse(stored))
+    } catch {}
+  }, [])
 
   function toggleSection(title: string) {
     setCollapsed(prev => {
@@ -126,13 +128,15 @@ export default function Sidebar({ user }: SidebarProps) {
           )
           if (visible.length === 0) return null
 
-          const longestMatchHref = visible
-            .filter(item => pathname === item.href || pathname.startsWith(item.href + "/"))
-            .reduce<string | undefined>((best, item) =>
-              item.href.length > (best?.length ?? 0) ? item.href : best,
-              undefined
-            )
-          const sectionIsActive = longestMatchHref !== undefined
+          const longestMatchHref = mounted
+            ? visible
+                .filter(item => pathname === item.href || pathname.startsWith(item.href + "/"))
+                .reduce<string | undefined>((best, item) =>
+                  item.href.length > (best?.length ?? 0) ? item.href : best,
+                  undefined
+                )
+            : undefined
+          const sectionIsActive = mounted && longestMatchHref !== undefined
           // aktívna sekcia sa nedá zbaliť
           const isCollapsed = section.title ? ((collapsed[section.title] ?? false) && !sectionIsActive) : false
 

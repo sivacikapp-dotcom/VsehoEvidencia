@@ -23,7 +23,7 @@ function validatePassword(password: string): string | null {
 export async function createUser(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
+  if (!session || (!callerRoles.includes("SPRAVCA_APLIKACIE") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie vytvárať používateľov." }
   }
 
@@ -76,7 +76,7 @@ export async function updateUser(
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
+  if (!session || (!callerRoles.includes("SPRAVCA_APLIKACIE") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie upravovať používateľov." }
   }
   if (roles.length === 0) return { error: "Vyberte aspoň jednu rolu." }
@@ -105,7 +105,7 @@ export async function updateUser(
 export async function deleteUser(userId: number): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || (!callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
+  if (!session || (!callerRoles.includes("SPRAVCA_APLIKACIE") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie mazať používateľov." }
   }
   if (parseInt(session.user.id) === userId) {
@@ -140,7 +140,7 @@ export async function setUserRoomAccess(
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
   const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || (!callerRoles.includes("SPRAVCA_KARIET") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
+  if (!session || (!callerRoles.includes("SPRAVCA_MAJETKU") && !callerRoles.includes("SPRAVCA_APLIKACIE"))) {
     return { error: "Nemáte oprávnenie spravovať prístupy do miestností." }
   }
 

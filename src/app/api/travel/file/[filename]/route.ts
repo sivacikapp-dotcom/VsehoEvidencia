@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -34,7 +34,7 @@ export async function GET(
   const order = attachment.expenseReport.travelOrder
   const isOwner = order.userId === userId
   const isSupervisor = order.supervisorId === userId
-  const isSpravcaPC = roles.includes("SPRAVCA_PC")
+  const isSpravcaPC = roles.includes("SPRAVCA_PRACOVNYCH_CIEST")
 
   if (!isOwner && !isSupervisor && !isSpravcaPC) {
     return new NextResponse("Forbidden", { status: 403 })

@@ -4,18 +4,17 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import type { Prisma } from "@/generated/prisma"
 import { writeFile, unlink, mkdir } from "fs/promises"
 import path from "path"
 import { randomUUID } from "crypto"
+import { extractDocText } from "@/lib/extractText"
 import { notifyDocumentAdded, notifyDocumentDeleted } from "@/lib/notificationHelpers"
 import { createAuditLog } from "@/lib/auditLog"
 
-async function getSession(opts: { mutation?: boolean } = {}) {
+async function getSession(_opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session) throw new Error("Neautorizovaný")
-  if (opts.mutation && (session.user.roles as string[]).includes("SPRAVCA_APLIKACIE")) {
-    throw new Error("Rola Správca aplikácie nemá oprávnenie na úpravy.")
-  }
   return session
 }
 
@@ -23,7 +22,7 @@ async function getUserDocContext(userId: number) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
-      docRole: true,
+      roles: true,
       agendaGestors: { select: { agendaId: true } },
       documentGestors: { select: { documentId: true } },
     },
@@ -35,7 +34,7 @@ export async function createAgenda(formData: FormData) {
   const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
-  if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže vytvárať agendy")
+  if (!user?.roles.includes("SPRAVCA_DOKUMENTOV")) throw new Error("Len správca dokumentov môže vytvárať agendy")
 
   const name = (formData.get("name") as string)?.trim()
   if (!name) return { error: "Názov agendy je povinný" }
@@ -58,7 +57,7 @@ export async function deleteAgenda(agendaId: number) {
   const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
-  if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže mazať agendy")
+  if (!user?.roles.includes("SPRAVCA_DOKUMENTOV")) throw new Error("Len správca dokumentov môže mazať agendy")
 
   const agenda = await prisma.agenda.findUnique({ where: { id: agendaId }, select: { name: true } })
   await prisma.agenda.delete({ where: { id: agendaId } })
@@ -77,7 +76,7 @@ export async function createDocument(formData: FormData) {
   const user = await getUserDocContext(userId)
 
   const agendaId = parseInt(formData.get("agendaId") as string)
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === agendaId)
   if (!isAdmin && !isAgendaGestor) throw new Error("Nemáte oprávnenie vytvárať dokumenty v tejto agende")
 
@@ -94,6 +93,7 @@ export async function createDocument(formData: FormData) {
   let prilohaPath: string | undefined
   let prilohaName: string | undefined
 
+  let textContent: string | undefined
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
@@ -103,6 +103,7 @@ export async function createDocument(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     prilohaPath = storedName
     prilohaName = file.name
+    textContent = (await extractDocText(storedName)) ?? undefined
   }
 
   const newDoc = await prisma.document.create({
@@ -114,6 +115,7 @@ export async function createDocument(formData: FormData) {
       agendaId,
       prilohaPath,
       prilohaName,
+      textContent,
     },
     include: { agenda: { select: { name: true } } },
   })
@@ -145,7 +147,7 @@ export async function updateDocument(formData: FormData) {
   const doc = await prisma.document.findUnique({ where: { id: documentId } })
   if (!doc) return { error: "Dokument neexistuje" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
   const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId)
   if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie editovať tento dokument")
@@ -163,10 +165,12 @@ export async function updateDocument(formData: FormData) {
 
   let prilohaPath = doc.prilohaPath
   let prilohaName = doc.prilohaName
+  let textContent = doc.textContent
 
   if (removePriloha) {
     prilohaPath = null
     prilohaName = null
+    textContent = null
   } else if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
@@ -176,6 +180,7 @@ export async function updateDocument(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     prilohaPath = storedName
     prilohaName = file.name
+    textContent = await extractDocText(storedName)
   }
 
   await prisma.document.update({
@@ -187,6 +192,7 @@ export async function updateDocument(formData: FormData) {
       confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || "INTERNI",
       prilohaPath,
       prilohaName,
+      textContent,
     },
   })
   await createAuditLog({
@@ -211,7 +217,7 @@ export async function deleteDocument(documentId: number) {
   })
   if (!doc) return { error: "Dokument neexistuje" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
   if (!isAdmin && !isAgendaGestor) throw new Error("Nemáte oprávnenie mazať tento dokument")
 
@@ -276,7 +282,7 @@ export async function createDocumentVersion(formData: FormData) {
   if (!source) return { error: "Dokument neexistuje" }
   if (!source.isLatest) return { error: "Novú verziu možno vytvoriť iba z aktuálnej verzie" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === source.agendaId)
   const isDocGestor = user?.documentGestors.some((g) => g.documentId === sourceId)
   if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie vytvárať novú verziu")
@@ -298,6 +304,7 @@ export async function createDocumentVersion(formData: FormData) {
 
   let prilohaPath: string | null = keepPriloha ? source.prilohaPath : null
   let prilohaName: string | null = keepPriloha ? source.prilohaName : null
+  let textContent: string | null = keepPriloha ? (source.textContent ?? null) : null
 
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
@@ -308,6 +315,7 @@ export async function createDocumentVersion(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     prilohaPath = storedName
     prilohaName = file.name
+    textContent = await extractDocText(storedName)
   }
 
   const newDoc = await prisma.$transaction(async (tx) => {
@@ -323,6 +331,7 @@ export async function createDocumentVersion(formData: FormData) {
         agendaId: source.agendaId,
         prilohaPath,
         prilohaName,
+        textContent,
         version: nextVersion,
         parentId: rootId,
         isLatest: true,
@@ -407,6 +416,7 @@ export async function createAttachmentVersion(formData: FormData) {
 
   let filePath: string | null = keepFile ? source.filePath : null
   let fileName: string | null = keepFile ? source.fileName : null
+  let textContent: string | null = keepFile ? (source.textContent ?? null) : null
 
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
@@ -417,6 +427,7 @@ export async function createAttachmentVersion(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     filePath = storedName
     fileName = file.name
+    textContent = await extractDocText(storedName)
   }
 
   await prisma.$transaction(async (tx) => {
@@ -432,6 +443,7 @@ export async function createAttachmentVersion(formData: FormData) {
         confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || source.confidentiality,
         filePath,
         fileName,
+        textContent,
         version: nextVersion,
         parentId: rootId,
         isLatest: true,
@@ -463,7 +475,7 @@ export async function grantDocumentAccess(documentId: number, targetUserId: numb
   const doc = await prisma.document.findUnique({ where: { id: documentId } })
   if (!doc) return { error: "Dokument neexistuje" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
   const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId)
   if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie udeľovať prístup")
@@ -490,7 +502,7 @@ export async function revokeDocumentAccess(documentId: number, targetUserId: num
   const doc = await prisma.document.findUnique({ where: { id: documentId } })
   if (!doc) return { error: "Dokument neexistuje" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
   const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId)
   if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie odoberať prístup")
@@ -511,7 +523,7 @@ export async function setAgendaGestor(agendaId: number, targetUserId: number, ad
   const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
   const user = await getUserDocContext(userId)
-  if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže prideľovať gestorov agend")
+  if (!user?.roles.includes("SPRAVCA_DOKUMENTOV")) throw new Error("Len správca dokumentov môže prideľovať gestorov agend")
 
   if (add) {
     await prisma.agendaGestor.upsert({
@@ -532,22 +544,6 @@ export async function setAgendaGestor(agendaId: number, targetUserId: number, ad
   return { success: true }
 }
 
-export async function setUserDocRole(targetUserId: number, role: "SPRAVCA_DOKUMENTOV" | "CITATEL") {
-  const session = await getSession({ mutation: true })
-  const userId = parseInt(session.user.id)
-  const user = await getUserDocContext(userId)
-  if (user?.docRole !== "SPRAVCA_DOKUMENTOV") throw new Error("Len správca dokumentov môže meniť roly")
-  if (targetUserId === userId) return { error: "Nemôžete zmeniť vlastnú rolu" }
-
-  await prisma.user.update({ where: { id: targetUserId }, data: { docRole: role } })
-  await createAuditLog({
-    userId, userEmail: session.user.email, userName: session.user.name,
-    action: "UPDATE", entityType: "USER", entityId: targetUserId, entityLabel: null,
-    newData: { docRole: role },
-  })
-  revalidatePath("/dashboard/dokumenty")
-  return { success: true }
-}
 
 export async function setDocumentGestor(documentId: number, targetUserId: number | null) {
   const session = await getSession({ mutation: true })
@@ -557,7 +553,7 @@ export async function setDocumentGestor(documentId: number, targetUserId: number
   const doc = await prisma.document.findUnique({ where: { id: documentId } })
   if (!doc) return { error: "Dokument neexistuje" }
 
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV")
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
   if (!isAdmin && !isAgendaGestor) throw new Error("Nemáte oprávnenie prideľovať gestora dokumentu")
 
@@ -583,9 +579,9 @@ async function canEditDoc(userId: number, documentId: number) {
     prisma.document.findUnique({ where: { id: documentId } }),
   ])
   if (!doc) return null
-  const isAdmin = user?.docRole === "SPRAVCA_DOKUMENTOV"
-  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId)
-  const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId)
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId) ?? false
+  const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId) ?? false
   if (!isAdmin && !isAgendaGestor && !isDocGestor) return null
   return doc
 }
@@ -610,6 +606,7 @@ export async function createDocumentAttachment(formData: FormData) {
 
   let filePath: string | undefined
   let fileName: string | undefined
+  let textContent: string | undefined
 
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
@@ -620,6 +617,7 @@ export async function createDocumentAttachment(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     filePath = storedName
     fileName = file.name
+    textContent = (await extractDocText(storedName)) ?? undefined
   }
 
   await prisma.documentAttachment.create({
@@ -631,6 +629,7 @@ export async function createDocumentAttachment(formData: FormData) {
       confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || doc.confidentiality,
       filePath,
       fileName,
+      textContent,
     },
   })
 
@@ -666,6 +665,7 @@ export async function updateDocumentAttachment(formData: FormData) {
 
   let filePath = attachment.filePath
   let fileName = attachment.fileName
+  let textContent = attachment.textContent
 
   if (removeFile) {
     if (filePath) {
@@ -674,6 +674,7 @@ export async function updateDocumentAttachment(formData: FormData) {
     }
     filePath = null
     fileName = null
+    textContent = null
   } else if (file && file.size > 0) {
     if (filePath) {
       const fullPath = path.join(process.cwd(), "uploads", "docs", filePath)
@@ -687,6 +688,7 @@ export async function updateDocumentAttachment(formData: FormData) {
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
     filePath = storedName
     fileName = file.name
+    textContent = await extractDocText(storedName)
   }
 
   await prisma.documentAttachment.update({
@@ -697,6 +699,7 @@ export async function updateDocumentAttachment(formData: FormData) {
       confidentiality: confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI",
       filePath,
       fileName,
+      textContent,
     },
   })
 
@@ -773,4 +776,187 @@ export async function deleteDocumentAttachment(attachmentId: number) {
   })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${attachment.documentId}`)
   return { success: true }
+}
+
+export type DocSearchResult = {
+  type: "document" | "attachment"
+  documentId: number
+  agendaId: number
+  agendaName: string
+  znacka: string
+  nazov: string
+  confidentiality: string
+  version: number
+  attachmentId?: number
+  attachmentZnacka?: string
+  attachmentNazov?: string
+  docSnippet?: string
+  attSnippet?: string
+  matchedDocFile?: string
+  matchedAttFile?: string
+}
+
+function extractSnippet(text: string, query: string, contextLen = 120): string {
+  const lText = text.toLowerCase()
+  const lQuery = query.toLowerCase()
+  const idx = lText.indexOf(lQuery)
+  if (idx === -1) return ""
+  const start = Math.max(0, idx - contextLen)
+  const end = Math.min(text.length, idx + query.length + contextLen)
+  let snippet = text.slice(start, end).replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim()
+  if (start > 0) snippet = "…" + snippet
+  if (end < text.length) snippet += "…"
+  return snippet
+}
+
+export async function searchDocuments(
+  query: string,
+  opts: { nazovDok: boolean; nazovPrilohy: boolean; textDok: boolean; textPrilohy: boolean; nazovSuboru: boolean; agendaId?: number }
+): Promise<{ results: DocSearchResult[] }> {
+  const session = await getSession()
+  const userId = parseInt(session.user.id)
+  const q = query.trim()
+  if (!q || q.length < 2) return { results: [] }
+
+  const userCtx = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      roles: true,
+      agendaGestors: { select: { agendaId: true } },
+      documentGestors: { select: { documentId: true } },
+      documentAccesses: { select: { documentId: true } },
+    },
+  })
+
+  const isAdmin = userCtx?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const managedAgendaIds = userCtx?.agendaGestors.map((g) => g.agendaId) ?? []
+  const managedDocIds = userCtx?.documentGestors.map((g) => g.documentId) ?? []
+  const accessDocIds = userCtx?.documentAccesses.map((g) => g.documentId) ?? []
+
+  const canAccessDoc = (doc: { confidentiality: string; agendaId: number; id: number }) => {
+    if (doc.confidentiality !== "DOVERNI") return true
+    if (isAdmin) return true
+    if (managedAgendaIds.includes(doc.agendaId)) return true
+    if (managedDocIds.includes(doc.id)) return true
+    if (accessDocIds.includes(doc.id)) return true
+    return false
+  }
+
+  const results: DocSearchResult[] = []
+
+  if (opts.nazovDok || opts.textDok || opts.nazovSuboru) {
+    const orClauses: Prisma.DocumentWhereInput[] = []
+    if (opts.nazovDok) {
+      orClauses.push(
+        { nazov: { contains: q, mode: "insensitive" } },
+        { znacka: { contains: q, mode: "insensitive" } },
+      )
+    }
+    if (opts.textDok) {
+      orClauses.push({ textContent: { contains: q, mode: "insensitive" } })
+    }
+    if (opts.nazovSuboru) {
+      orClauses.push({ prilohaName: { contains: q, mode: "insensitive" } })
+    }
+
+    const docs = await prisma.document.findMany({
+      where: { isLatest: true, OR: orClauses, ...(opts.agendaId ? { agendaId: opts.agendaId } : {}) },
+      include: { agenda: { select: { id: true, name: true } } },
+      orderBy: { updatedAt: "desc" },
+      take: 100,
+    })
+
+    for (const doc of docs) {
+      if (!canAccessDoc(doc)) continue
+      const docSnippet = opts.textDok && doc.textContent
+        ? extractSnippet(doc.textContent, q) || undefined
+        : undefined
+      const matchedDocFile = opts.nazovSuboru && doc.prilohaName?.toLowerCase().includes(q.toLowerCase())
+        ? doc.prilohaName
+        : undefined
+      results.push({
+        type: "document",
+        documentId: doc.id,
+        agendaId: doc.agendaId,
+        agendaName: doc.agenda.name,
+        znacka: doc.znacka,
+        nazov: doc.nazov,
+        confidentiality: doc.confidentiality,
+        version: doc.version,
+        docSnippet,
+        matchedDocFile,
+      })
+    }
+  }
+
+  if (opts.nazovPrilohy || opts.textPrilohy || opts.nazovSuboru) {
+    const orClauses: Prisma.DocumentAttachmentWhereInput[] = []
+    if (opts.nazovPrilohy) {
+      orClauses.push(
+        { nazov: { contains: q, mode: "insensitive" } },
+        { znacka: { contains: q, mode: "insensitive" } },
+      )
+    }
+    if (opts.textPrilohy) {
+      orClauses.push({ textContent: { contains: q, mode: "insensitive" } })
+    }
+    if (opts.nazovSuboru) {
+      orClauses.push({ fileName: { contains: q, mode: "insensitive" } })
+    }
+
+    const attachments = await prisma.documentAttachment.findMany({
+      where: {
+        isLatest: true,
+        OR: orClauses,
+        ...(opts.agendaId ? { document: { agendaId: opts.agendaId } } : {}),
+      },
+      include: {
+        document: { include: { agenda: { select: { id: true, name: true } } } },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 100,
+    })
+
+    const seenDocIds = new Set(results.map((r) => r.documentId))
+    for (const att of attachments) {
+      const doc = att.document
+      if (!doc.isLatest) continue
+      if (!canAccessDoc({ confidentiality: doc.confidentiality, agendaId: doc.agendaId, id: doc.id })) continue
+      const attSnippet = opts.textPrilohy && att.textContent
+        ? extractSnippet(att.textContent, q) || undefined
+        : undefined
+      const matchedAttFile = opts.nazovSuboru && att.fileName?.toLowerCase().includes(q.toLowerCase())
+        ? att.fileName
+        : undefined
+      if (seenDocIds.has(doc.id)) {
+        const existing = results.find((r) => r.documentId === doc.id && r.type === "document")
+        if (existing && !existing.attachmentId) {
+          existing.attachmentId = att.id
+          existing.attachmentZnacka = att.znacka
+          existing.attachmentNazov = att.nazov
+          existing.attSnippet = attSnippet
+          existing.matchedAttFile = matchedAttFile
+        }
+        continue
+      }
+      seenDocIds.add(doc.id)
+      results.push({
+        type: "attachment",
+        documentId: doc.id,
+        agendaId: doc.agendaId,
+        agendaName: doc.agenda.name,
+        znacka: doc.znacka,
+        nazov: doc.nazov,
+        confidentiality: doc.confidentiality,
+        version: doc.version,
+        attachmentId: att.id,
+        attachmentZnacka: att.znacka,
+        attachmentNazov: att.nazov,
+        attSnippet,
+        matchedAttFile,
+      })
+    }
+  }
+
+  return { results: results.slice(0, 80) }
 }

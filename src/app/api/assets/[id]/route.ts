@@ -26,7 +26,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return NextResponse.json({ error: "Nemáte oprávnenie." }, { status: 403 })
   }
 

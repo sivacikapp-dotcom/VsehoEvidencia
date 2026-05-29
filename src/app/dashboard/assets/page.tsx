@@ -10,7 +10,7 @@ export default async function AssetsPage() {
   if (!session) redirect("/login")
 
   const roles = session.user.roles
-  const isManager = roles.includes("SPRAVCA_KARIET")
+  const isManager = roles.includes("SPRAVCA_MAJETKU")
   const isSecurity = roles.includes("BEZPECNOSTNY_PRACOVNIK")
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isManager && !isSecurity
   if (!isManager && !isSecurity && !isAppAdmin) redirect("/dashboard")

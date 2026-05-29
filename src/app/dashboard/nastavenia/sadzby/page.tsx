@@ -9,8 +9,8 @@ export default async function RateSettingsPage() {
   const session = await getServerSession(authOptions)
   if (!session?.user) redirect("/login")
   const user = session.user as { id: string; roles: string[] }
-  const isAppAdmin = user.roles.includes("SPRAVCA_APLIKACIE") && !user.roles.includes("SPRAVCA_PC")
-  if (!user.roles.includes("SPRAVCA_PC") && !isAppAdmin) notFound()
+  const isAppAdmin = user.roles.includes("SPRAVCA_APLIKACIE") && !user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST") && !isAppAdmin) notFound()
 
   const configs = await prisma.travelRateConfig.findMany({
     include: { createdBy: { select: { firstName: true, lastName: true } } },

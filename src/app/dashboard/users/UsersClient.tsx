@@ -2,45 +2,83 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Loader2, Pencil, ExternalLink, Trash2 } from "lucide-react"
-import Link from "next/link"
+import { Plus, X, Loader2, Pencil, Trash2 } from "lucide-react"
 import { createUser, updateUser, deleteUser } from "./actions"
 import type { Role } from "@/generated/prisma/enums"
 
-const ALL_ROLES: { value: Role; label: string }[] = [
-  { value: "PRIJEMCA", label: "Príjemca" },
-  { value: "NADRIADENY", label: "Nadriadený" },
-  { value: "BEZPECNOSTNY_PRACOVNIK", label: "Bezpečnostný pracovník" },
-  { value: "SPRAVCA_KARIET", label: "Správca kariet" },
-  { value: "SPRAVCA_PC", label: "Správca pracovných ciest" },
-  { value: "SPRAVCA_ROLI", label: "Správca rolí" },
-  { value: "SPRAVCA_APLIKACIE", label: "Správca aplikácie" },
+const ROLE_GROUPS: { label: string; roles: { value: Role; label: string }[] }[] = [
+  {
+    label: "Aplikácia",
+    roles: [
+      { value: "SPRAVCA_APLIKACIE", label: "Správca aplikácie" },
+    ],
+  },
+  {
+    label: "Registratúra",
+    roles: [
+      { value: "SPRAVCA_REGISTRATURY",     label: "Správca registratúry" },
+      { value: "PRACOVNIK_PODATELNE",       label: "Prac. podateľne" },
+      { value: "SPRACOVATEL_REGISTRATURY",  label: "Spracovateľ registratúry" },
+    ],
+  },
+  {
+    label: "Pracovné cesty",
+    roles: [
+      { value: "SPRAVCA_PRACOVNYCH_CIEST", label: "Správca pracovných ciest" },
+    ],
+  },
+  {
+    label: "Dokumenty",
+    roles: [
+      { value: "SPRAVCA_DOKUMENTOV", label: "Správca dokumentov" },
+      { value: "GESTOR_AGENDY",       label: "Gestor agendy" },
+      { value: "GESTOR_DOKUMENTU",    label: "Gestor dokumentu" },
+    ],
+  },
+  {
+    label: "Majetok",
+    roles: [
+      { value: "SPRAVCA_MAJETKU", label: "Správca majetku" },
+      { value: "PRIJEMCA",         label: "Príjemca" },
+    ],
+  },
+  {
+    label: "Ostatné",
+    roles: [
+      { value: "BEZPECNOSTNY_PRACOVNIK", label: "Bezpečnostný pracovník" },
+      { value: "NADRIADENY",              label: "Nadriadený" },
+    ],
+  },
 ]
 
 const roleBadge: Record<Role, string> = {
   PRIJEMCA: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
   NADRIADENY: "bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300",
   BEZPECNOSTNY_PRACOVNIK: "bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300",
-  SPRAVCA_KARIET: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
-  SPRAVCA_PC: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
-  SPRAVCA_ROLI: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+  SPRAVCA_MAJETKU: "bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300",
+  SPRAVCA_PRACOVNYCH_CIEST: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
   SPRAVCA_APLIKACIE: "bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300",
   SPRAVCA_REGISTRATURY: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300",
-  PRACOVNIK_PODATELNE: "bg-teal-100 text-teal-700 dark:bg-teal-900/50 dark:text-teal-300",
+  PRACOVNIK_PODATELNE: "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/50 dark:text-cyan-300",
   SPRACOVATEL_REGISTRATURY: "bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300",
+  SPRAVCA_DOKUMENTOV: "bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300",
+  GESTOR_AGENDY: "bg-lime-100 text-lime-700 dark:bg-lime-900/50 dark:text-lime-300",
+  GESTOR_DOKUMENTU: "bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300",
 }
 
 const roleLabel: Record<Role, string> = {
   PRIJEMCA: "Príjemca",
   NADRIADENY: "Nadriadený",
   BEZPECNOSTNY_PRACOVNIK: "BP",
-  SPRAVCA_KARIET: "Správca",
-  SPRAVCA_PC: "Správca PC",
-  SPRAVCA_ROLI: "Správca rolí",
+  SPRAVCA_MAJETKU: "Správca majetku",
+  SPRAVCA_PRACOVNYCH_CIEST: "Správca PC",
   SPRAVCA_APLIKACIE: "Spr. aplikácie",
   SPRAVCA_REGISTRATURY: "Spr. registratúry",
   PRACOVNIK_PODATELNE: "Prac. podateľne",
   SPRACOVATEL_REGISTRATURY: "Spracovateľ",
+  SPRAVCA_DOKUMENTOV: "Spr. dokumentov",
+  GESTOR_AGENDY: "Gestor agendy",
+  GESTOR_DOKUMENTU: "Gestor dok.",
 }
 
 type User = {
@@ -70,28 +108,34 @@ function Field({ label, required, hint, children }: { label: string; required?: 
 }
 
 function RoleCheckboxes({ selected, onChange }: { selected: Role[]; onChange: (r: Role[]) => void }) {
+  function toggle(value: Role) {
+    onChange(selected.includes(value) ? selected.filter((r) => r !== value) : [...selected, value])
+  }
   return (
-    <div className="flex flex-wrap gap-2">
-      {ALL_ROLES.map(({ value, label }) => {
-        const checked = selected.includes(value)
-        return (
-          <label key={value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
-            checked
-              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
-              : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500"
-          }`}>
-            <input
-              type="checkbox"
-              className="hidden"
-              checked={checked}
-              onChange={() =>
-                onChange(checked ? selected.filter((r) => r !== value) : [...selected, value])
-              }
-            />
-            {label}
-          </label>
-        )
-      })}
+    <div className="space-y-3">
+      {ROLE_GROUPS.map((group, gi) => (
+        <div key={group.label}>
+          {gi > 0 && <div className="border-t border-gray-100 dark:border-gray-700/60 mb-3" />}
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">
+            {group.label}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {group.roles.map(({ value, label }) => {
+              const checked = selected.includes(value)
+              return (
+                <label key={value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${
+                  checked
+                    ? "border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300"
+                    : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500"
+                }`}>
+                  <input type="checkbox" className="hidden" checked={checked} onChange={() => toggle(value)} />
+                  {label}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -213,7 +257,7 @@ function EditUserModal({ user, allUsers, onClose }: { user: User; allUsers: User
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5 space-y-4">
+          <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
             <Field label="Role" required>
               <RoleCheckboxes selected={roles} onChange={setRoles} />
             </Field>
@@ -286,7 +330,7 @@ export default function UsersClient({ users, canManage = false }: { users: User[
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <tr>
-              {["ID", "Priezvisko, Meno", "Email", "Role", "Nadriadený", "Priradení", "Akcie"].map((h) => (
+              {["ID", "Priezvisko, Meno", "Email", "Role", "Nadriadený", ""].map((h) => (
                 <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide whitespace-nowrap">
                   {h}
                 </th>
@@ -313,13 +357,8 @@ export default function UsersClient({ users, canManage = false }: { users: User[
                 <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm">
                   {u.supervisorName ?? <span className="text-gray-300 dark:text-gray-600">—</span>}
                 </td>
-                <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-center">{u.totalAssignments}</td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
-                    <Link href={`/dashboard/users/${u.id}`} className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/40 rounded-md font-medium">
-                      <ExternalLink size={11} />
-                      Karta
-                    </Link>
                     {canManage && (
                       <>
                         <button onClick={() => setEditUser(u)} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md font-medium">
@@ -342,7 +381,7 @@ export default function UsersClient({ users, canManage = false }: { users: User[
             ))}
             {users.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">
                   Žiadni používatelia.
                 </td>
               </tr>

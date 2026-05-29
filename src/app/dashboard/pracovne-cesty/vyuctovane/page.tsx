@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth"
+﻿import { getServerSession } from "next-auth"
 import { redirect } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -12,7 +12,7 @@ export default async function VyuctovaneCestyPage() {
   const userId = parseInt(user.id)
   const roles = user.roles as string[]
 
-  const isSpravcaPC = roles.includes("SPRAVCA_PC")
+  const isSpravcaPC = roles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   const isNadriadeny = roles.includes("NADRIADENY")
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaPC && !isNadriadeny
 

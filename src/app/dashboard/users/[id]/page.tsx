@@ -13,13 +13,12 @@ export default async function UserCardPage({
   if (!session) redirect("/login")
 
   const roles = session.user.roles
-  const isManager = roles.includes("SPRAVCA_KARIET")
+  const isManager = roles.includes("SPRAVCA_MAJETKU")
   const isSupervisorRole = roles.includes("NADRIADENY")
   const canViewAll =
-    roles.includes("SPRAVCA_ROLI") ||
     roles.includes("SPRAVCA_APLIKACIE") ||
-    roles.includes("SPRAVCA_KARIET") ||
-    roles.includes("SPRAVCA_PC") ||
+    roles.includes("SPRAVCA_MAJETKU") ||
+    roles.includes("SPRAVCA_PRACOVNYCH_CIEST") ||
     roles.includes("BEZPECNOSTNY_PRACOVNIK")
   const sessionUserId = parseInt(session.user.id)
 

@@ -7,7 +7,7 @@ import RoomsClient from "./RoomsClient"
 export default async function RoomsPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect("/login")
-  const isSpravcaKariet = session.user.roles.includes("SPRAVCA_KARIET")
+  const isSpravcaKariet = session.user.roles.includes("SPRAVCA_MAJETKU")
   const isAppAdmin = session.user.roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaKariet
   if (!isSpravcaKariet && !session.user.roles.includes("SPRAVCA_APLIKACIE")) redirect("/dashboard")
 

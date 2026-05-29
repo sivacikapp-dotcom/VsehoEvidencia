@@ -194,7 +194,7 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
-  const isManager = userRoles.includes("SPRAVCA_KARIET")
+  const isManager = userRoles.includes("SPRAVCA_MAJETKU")
   const isSecurity = userRoles.includes("BEZPECNOSTNY_PRACOVNIK")
 
   const [showNewModal, setShowNewModal] = useState(false)

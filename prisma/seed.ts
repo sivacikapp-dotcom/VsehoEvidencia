@@ -19,17 +19,17 @@ async function main() {
       lastName: "Správca",
       email: "admin@test.sk",
       password: hash,
-      roles: ["SPRAVCA_KARIET"],
+      roles: ["SPRAVCA_MAJETKU"],
     },
   })
 
   console.log("Testovací používateľ vytvorený:", user.email)
   console.log("Heslo: heslo123")
 
-  // Seed admin as document admin
+  // Seed admin as document admin (via roles)
   await prisma.user.update({
     where: { email: "admin@test.sk" },
-    data: { docRole: "SPRAVCA_DOKUMENTOV" },
+    data: { roles: { push: "SPRAVCA_DOKUMENTOV" } },
   })
 
   // Seed initial agendas

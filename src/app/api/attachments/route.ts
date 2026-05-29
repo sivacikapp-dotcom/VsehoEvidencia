@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   if ((roles as string[]).includes("SPRAVCA_APLIKACIE")) {
     return NextResponse.json({ error: "Nemáte oprávnenie nahrávať prílohy." }, { status: 403 })
   }
-  const isManager = roles.includes("SPRAVCA_KARIET")
+  const isManager = roles.includes("SPRAVCA_MAJETKU")
   const isSecurityWorker = roles.includes("BEZPECNOSTNY_PRACOVNIK")
   if (!isManager && !isSecurityWorker) {
     return NextResponse.json({ error: "Nemáte oprávnenie nahrávať prílohy." }, { status: 403 })
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
   await writeFile(join(uploadDir, storedName), new Uint8Array(bytes))
 
   const allUploaderRoles: Role[] = []
-  if (isManager) allUploaderRoles.push("SPRAVCA_KARIET")
+  if (isManager) allUploaderRoles.push("SPRAVCA_MAJETKU")
   if (isSecurityWorker) allUploaderRoles.push("BEZPECNOSTNY_PRACOVNIK")
 
   let uploaderRoles: Role[] = allUploaderRoles

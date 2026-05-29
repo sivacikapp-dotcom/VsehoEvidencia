@@ -28,7 +28,7 @@ export async function notifyAcceptance(
 
   if (isSecurity) {
     const managers = await prisma.user.findMany({
-      where: { roles: { hasSome: ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK"] } },
+      where: { roles: { hasSome: ["SPRAVCA_MAJETKU", "BEZPECNOSTNY_PRACOVNIK"] } },
       select: { id: true },
     })
     managers.forEach((m) => { if (m.id !== acceptorUserId) userIds.add(m.id) })
@@ -103,7 +103,7 @@ export async function notifyDocumentAdded(
 
   if (confidentiality === "DOVERNI") {
     const [admins, agendaGestors] = await Promise.all([
-      prisma.user.findMany({ where: { docRole: "SPRAVCA_DOKUMENTOV" }, select: { id: true } }),
+      prisma.user.findMany({ where: { roles: { has: "SPRAVCA_DOKUMENTOV" as const } }, select: { id: true } }),
       prisma.agendaGestor.findMany({ where: { agendaId }, select: { userId: true } }),
     ])
     const ids = new Set<number>([
@@ -143,7 +143,7 @@ export async function notifyDocumentDeleted(
 
   if (confidentiality === "DOVERNI") {
     const [admins, agendaGestors] = await Promise.all([
-      prisma.user.findMany({ where: { docRole: "SPRAVCA_DOKUMENTOV" }, select: { id: true } }),
+      prisma.user.findMany({ where: { roles: { has: "SPRAVCA_DOKUMENTOV" as const } }, select: { id: true } }),
       prisma.agendaGestor.findMany({ where: { agendaId }, select: { userId: true } }),
     ])
     const ids = new Set<number>([
@@ -197,7 +197,7 @@ export async function notifyTravelOrderForManager(
   excludeUserId?: number
 ) {
   const managers = await prisma.user.findMany({
-    where: { roles: { has: "SPRAVCA_PC" } },
+    where: { roles: { has: "SPRAVCA_PRACOVNYCH_CIEST" as const } },
     select: { id: true },
   })
   const targets = managers.filter((m) => m.id !== excludeUserId)
@@ -276,7 +276,7 @@ export async function notifyExpenseReportForManager(
   excludeUserId?: number
 ) {
   const managers = await prisma.user.findMany({
-    where: { roles: { has: "SPRAVCA_PC" } },
+    where: { roles: { has: "SPRAVCA_PRACOVNYCH_CIEST" as const } },
     select: { id: true },
   })
   const targets = managers.filter((m) => m.id !== excludeUserId)

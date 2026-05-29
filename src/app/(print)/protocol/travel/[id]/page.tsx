@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth"
+﻿import { getServerSession } from "next-auth"
 import { redirect, notFound } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -38,7 +38,7 @@ export default async function TravelOrderPrintPage({ params }: { params: Promise
 
   const isOwner = order.userId === userId
   const isSupervisor = order.supervisorId === userId
-  const isSpravcaPC = roles.includes("SPRAVCA_PC")
+  const isSpravcaPC = roles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   if (!isOwner && !isSupervisor && !isSpravcaPC) notFound()
 
 

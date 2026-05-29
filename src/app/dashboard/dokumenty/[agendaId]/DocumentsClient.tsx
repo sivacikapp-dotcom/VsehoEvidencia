@@ -1,14 +1,15 @@
 "use client"
 
-import { useState, useMemo, useRef } from "react"
+import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   FileText, Plus, Trash2, Pencil, X, Loader2,
   ChevronRight, ArrowLeft, Paperclip, Eye, EyeOff, Lock,
   UserPlus, UserMinus, Shield, Search, ArrowUpDown, ChevronUp, ChevronDown,
+  File, Building2,
 } from "lucide-react"
-import { createDocument, updateDocument, deleteDocument, setAgendaGestor } from "../actions"
+import { createDocument, updateDocument, deleteDocument, setAgendaGestor, searchDocuments, type DocSearchResult } from "../actions"
 import { fmtDate } from "@/lib/formatDate"
 import { MultiSelect } from "@/components/MultiSelect"
 
@@ -56,6 +57,36 @@ const inputCls =
 const selectCls = inputCls
 
 type SortKey = "znacka" | "nazov" | "datumSchvalenia" | "confidentiality"
+type SearchOpts = { nazovDok: boolean; nazovPrilohy: boolean; textDok: boolean; textPrilohy: boolean; nazovSuboru: boolean }
+
+const confLabel: Record<string, { text: string; cls: string }> = {
+  VEREJNY: { text: "Verejný",  cls: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  INTERNI: { text: "Interný",  cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  DOVERNI: { text: "Dôverný",  cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+}
+
+function escapeRegex(s: string) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+function HighlightText({ text, query }: { text: string; query: string }) {
+  const q = query.trim()
+  if (!q) return <>{text}</>
+  const parts = text.split(new RegExp(`(${escapeRegex(q)})`, "gi"))
+  return (
+    <>
+      {parts.map((part, i) =>
+        i % 2 === 1 ? (
+          <mark key={i} className="bg-yellow-200 dark:bg-yellow-600/40 text-inherit rounded-[2px] px-0.5 not-italic">
+            {part}
+          </mark>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  )
+}
 
 const confidentialityOptions = (Object.keys(confidentialityLabels) as Confidentiality[]).map(k => ({
   value: k,
@@ -119,16 +150,48 @@ export default function DocumentsClient({
   const [removePriloha, setRemovePriloha] = useState(false)
   const [gestorPending, setGestorPending] = useState<number | null>(null)
 
-  // filter / sort state
-  const [search, setSearch] = useState("")
+  // full-text search
+  const [searchQuery, setSearchQuery] = useState("")
+  const [searchOpts, setSearchOpts] = useState<SearchOpts>({
+    nazovDok: true, nazovPrilohy: true, textDok: false, textPrilohy: false, nazovSuboru: false,
+  })
+  const [searching, setSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState<DocSearchResult[] | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const isSearchActive = searchQuery.trim().length >= 2
+
+  const runSearch = useCallback(async (q: string, opts: SearchOpts) => {
+    if (!q.trim() || q.trim().length < 2) { setSearchResults(null); return }
+    const anyOpt = opts.nazovDok || opts.nazovPrilohy || opts.textDok || opts.textPrilohy || opts.nazovSuboru
+    if (!anyOpt) { setSearchResults(null); return }
+    setSearching(true)
+    try {
+      const { results } = await searchDocuments(q, { ...opts, agendaId: agenda.id })
+      setSearchResults(results)
+    } finally {
+      setSearching(false)
+    }
+  }, [agenda.id])
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => runSearch(searchQuery, searchOpts), 400)
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current) }
+  }, [searchQuery, searchOpts, runSearch])
+
+  function toggleOpt(key: keyof SearchOpts) {
+    setSearchOpts(prev => ({ ...prev, [key]: !prev[key] }))
+  }
+
+  // table filter / sort state
   const [filterConfidentiality, setFilterConfidentiality] = useState<Set<string>>(new Set())
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
-  const hasActiveFilters = search || filterConfidentiality.size > 0
+  const hasActiveFilters = filterConfidentiality.size > 0
 
   function clearAllFilters() {
-    setSearch(""); setFilterConfidentiality(new Set())
+    setFilterConfidentiality(new Set())
   }
 
   function handleSort(key: string) {
@@ -137,23 +200,15 @@ export default function DocumentsClient({
     else { setSortKey(k); setSortDir("asc") }
   }
 
-  const searchFiltered = useMemo(() => {
-    if (!search) return documents
-    const q = search.toLowerCase()
-    return documents.filter(d =>
-      d.znacka.toLowerCase().includes(q) || d.nazov.toLowerCase().includes(q)
-    )
-  }, [documents, search])
-
   const availableConfidentialityOptions = useMemo(() => {
-    const vals = new Set(searchFiltered.map(d => d.confidentiality))
+    const vals = new Set(documents.map(d => d.confidentiality))
     return confidentialityOptions.filter(opt => vals.has(opt.value as Confidentiality) || filterConfidentiality.has(opt.value))
-  }, [searchFiltered, filterConfidentiality])
+  }, [documents, filterConfidentiality])
 
-  const filtered = useMemo(() => searchFiltered.filter(d => {
+  const filtered = useMemo(() => documents.filter(d => {
     if (filterConfidentiality.size > 0 && !filterConfidentiality.has(d.confidentiality)) return false
     return true
-  }), [searchFiltered, filterConfidentiality])
+  }), [documents, filterConfidentiality])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -274,25 +329,60 @@ export default function DocumentsClient({
         )}
       </div>
 
+      {/* Search bar */}
+      {documents.length > 0 && (
+        <div className="mb-4">
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Vyhľadať v tejto agende…"
+              className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg pl-9 pr-9 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => { setSearchQuery(""); setSearchResults(null) }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-2.5 px-1">
+            {([
+              ["nazovDok",    "Názvy dokumentov"],
+              ["nazovPrilohy","Názvy príloh"],
+              ["textDok",     "Texty dokumentov"],
+              ["textPrilohy", "Texty príloh"],
+              ["nazovSuboru", "Názvy súborov"],
+            ] as [keyof SearchOpts, string][]).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={searchOpts[key]}
+                  onChange={() => toggleOpt(key)}
+                  className="w-3.5 h-3.5 rounded accent-blue-600"
+                />
+                <span className="text-xs text-gray-600 dark:text-gray-400">{label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
       {documents.length === 0 ? (
         <div className="text-center py-16 text-gray-500 dark:text-gray-400">
           <FileText size={40} className="mx-auto mb-3 opacity-40" />
           <p>Táto agenda nemá žiadne dokumenty.</p>
           {canCreate && <p className="text-sm mt-1">Pridajte prvý dokument tlačidlom vyššie.</p>}
         </div>
+      ) : isSearchActive ? (
+        <AgendaSearchResults results={searchResults} searching={searching} query={searchQuery} agendaId={agenda.id} />
       ) : (
         <>
           {/* filters */}
           <div className="flex gap-2 flex-wrap items-center mb-4">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Hľadať..."
-                className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-52"
-              />
-            </div>
             <MultiSelect
               placeholder="Dôvernosť"
               options={availableConfidentialityOptions}
@@ -587,6 +677,134 @@ export default function DocumentsClient({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+function AgendaSearchResults({
+  results,
+  searching,
+  query,
+  agendaId,
+}: {
+  results: DocSearchResult[] | null
+  searching: boolean
+  query: string
+  agendaId: number
+}) {
+  if (searching) {
+    return (
+      <div className="flex items-center justify-center py-16 gap-2 text-gray-400 dark:text-gray-500">
+        <Loader2 size={18} className="animate-spin" />
+        <span className="text-sm">Vyhľadávam…</span>
+      </div>
+    )
+  }
+
+  if (results === null) return null
+
+  if (results.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+        <Search size={32} className="mb-3 opacity-40" />
+        <p className="text-sm">Žiadne výsledky pre „{query}"</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+        {results.length} {results.length === 1 ? "výsledok" : results.length < 5 ? "výsledky" : "výsledkov"}
+      </p>
+      {results.map((r, i) => {
+        const isAtt = r.type === "attachment"
+        const conf = confLabel[r.confidentiality]
+        return (
+          <Link
+            key={i}
+            href={`/dashboard/dokumenty/${agendaId}/${r.documentId}`}
+            className="block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-5 py-4 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-sm transition-all"
+          >
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 shrink-0">
+                {isAtt
+                  ? <Paperclip size={15} className="text-gray-400" />
+                  : <FileText size={15} className="text-blue-500" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                {/* document znacka + nazov */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400">
+                    <HighlightText text={r.znacka} query={query} />
+                  </span>
+                  {r.version > 1 && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      v{r.version}
+                    </span>
+                  )}
+                  {conf && (
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${conf.cls}`}>
+                      {conf.text}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-0.5">
+                  <HighlightText text={r.nazov} query={query} />
+                </p>
+
+                {/* attachment info */}
+                {isAtt && r.attachmentZnacka && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <Paperclip size={11} className="text-gray-400 shrink-0" />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      Príloha:{" "}
+                      <span className="font-mono font-medium text-gray-700 dark:text-gray-300">
+                        <HighlightText text={r.attachmentZnacka} query={query} />
+                      </span>
+                      {r.attachmentNazov && (
+                        <> — <HighlightText text={r.attachmentNazov} query={query} /></>
+                      )}
+                    </span>
+                  </div>
+                )}
+
+                {/* file names */}
+                {r.matchedDocFile && (
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    <File size={11} className="text-gray-400 shrink-0" />
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      Súbor: <HighlightText text={r.matchedDocFile} query={query} />
+                    </span>
+                  </div>
+                )}
+                {r.matchedAttFile && (
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <File size={11} className="text-gray-400 shrink-0" />
+                    <span className="text-xs text-gray-400 dark:text-gray-500">
+                      Príloha súbor: <HighlightText text={r.matchedAttFile} query={query} />
+                    </span>
+                  </div>
+                )}
+
+                {/* text snippets */}
+                {r.docSnippet && (
+                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-3 italic">
+                    <HighlightText text={r.docSnippet} query={query} />
+                  </p>
+                )}
+                {r.attSnippet && (
+                  <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed line-clamp-3 italic">
+                    <Building2 size={10} className="inline mr-1 opacity-60" />
+                    <HighlightText text={r.attSnippet} query={query} />
+                  </p>
+                )}
+              </div>
+              <ChevronRight size={15} className="shrink-0 text-gray-300 dark:text-gray-600 mt-0.5" />
+            </div>
+          </Link>
+        )
+      })}
     </div>
   )
 }

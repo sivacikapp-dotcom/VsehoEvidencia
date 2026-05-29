@@ -22,6 +22,8 @@ const securityHeaders = [
   },
 ];
 
+const isDev = process.env.NODE_ENV === "development"
+
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
@@ -32,7 +34,15 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/(.*)",
-        headers: securityHeaders,
+        headers: [
+          ...securityHeaders,
+          // Zakazuje registráciu service workera — zabraňuje stale-chunk problémom v Turbopack
+          { key: "Service-Worker-Allowed", value: "" },
+          // V dev móde zakáž cachovanie JS chunkov v prehliadači
+          ...(isDev
+            ? [{ key: "Cache-Control", value: "no-store" }]
+            : []),
+        ],
       },
     ];
   },

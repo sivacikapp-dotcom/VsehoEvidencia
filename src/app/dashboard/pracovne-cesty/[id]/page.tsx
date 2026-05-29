@@ -1,4 +1,4 @@
-import { getServerSession } from "next-auth"
+﻿import { getServerSession } from "next-auth"
 import { redirect, notFound } from "next/navigation"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -35,12 +35,12 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
   })
   if (!order) notFound()
 
-  const isSpravcaPC = roles.includes("SPRAVCA_PC")
+  const isSpravcaPC = roles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   const isOwner = order.userId === userId
   const isSupervisor = order.supervisorId === userId
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isSpravcaPC && !isOwner && !isSupervisor
 
-  // Prístup: vlastník, nadriadený príkazu, SPRAVCA_PC alebo SPRAVCA_APLIKACIE
+  // Prístup: vlastník, nadriadený príkazu, SPRAVCA_PRACOVNYCH_CIEST alebo SPRAVCA_APLIKACIE
   if (!isOwner && !isSupervisor && !isSpravcaPC && !isAppAdmin) notFound()
 
   const rates = await getCurrentTravelRates()

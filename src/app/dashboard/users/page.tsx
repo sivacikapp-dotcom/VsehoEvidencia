@@ -36,13 +36,13 @@ export default async function UsersPage() {
   const sessionUserId = parseInt(session.user.id)
   const roles = (session.user as { roles: string[] }).roles
 
-  const isRoleManager = roles.includes("SPRAVCA_ROLI")
+  const isRoleManager = roles.includes("SPRAVCA_APLIKACIE")
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE")
   const canViewAll =
     isRoleManager ||
     isAppAdmin ||
-    roles.includes("SPRAVCA_KARIET") ||
-    roles.includes("SPRAVCA_PC") ||
+    roles.includes("SPRAVCA_MAJETKU") ||
+    roles.includes("SPRAVCA_PRACOVNYCH_CIEST") ||
     roles.includes("BEZPECNOSTNY_PRACOVNIK")
 
   let rawUsers

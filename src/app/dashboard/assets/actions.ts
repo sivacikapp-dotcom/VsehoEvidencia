@@ -76,7 +76,7 @@ type Result = { error?: string; success?: boolean }
 
 export async function createAsset(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie vytvárať majetok." }
   }
 
@@ -143,7 +143,7 @@ export async function assignAsset(
   updateUsagePlace?: boolean
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie prideľovať majetok." }
   }
 
@@ -229,7 +229,7 @@ export async function updateAsset(
   formData: FormData
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie upravovať majetok." }
   }
 
@@ -312,7 +312,7 @@ export async function returnAsset(
   returnNote?: string
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_KARIET")) {
+  if (!session?.user.roles.includes("SPRAVCA_MAJETKU")) {
     return { error: "Nemáte oprávnenie." }
   }
 
@@ -469,7 +469,7 @@ export async function updateAttachmentVisibility(
   const session = await getServerSession(authOptions)
   if (!session) return { error: "Neautorizovaný." }
   const roles = session.user.roles as Role[]
-  if (!roles.includes("SPRAVCA_KARIET") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
+  if (!roles.includes("SPRAVCA_MAJETKU") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
     return { error: "Nemáte oprávnenie upravovať prílohy." }
   }
 
@@ -482,7 +482,7 @@ export async function updateAttachmentVisibility(
   })
   if (!attachment) return { error: "Príloha nebola nájdená." }
 
-  const ROLE_WHITELIST = ["SPRAVCA_KARIET", "BEZPECNOSTNY_PRACOVNIK"]
+  const ROLE_WHITELIST = ["SPRAVCA_MAJETKU", "BEZPECNOSTNY_PRACOVNIK"]
   let newUploaderRoles = attachment.uploaderRoles as string[]
   if (visibility === "OwnRoleOnly" && visibilityRoles && visibilityRoles.length > 0) {
     const filtered = visibilityRoles.filter((r) => ROLE_WHITELIST.includes(r))
@@ -509,7 +509,7 @@ export async function deleteAssetAttachment(attachmentId: number): Promise<Resul
   if (!session) return { error: "Neautorizovaný." }
 
   const roles = session.user.roles as Role[]
-  if (!roles.includes("SPRAVCA_KARIET") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
+  if (!roles.includes("SPRAVCA_MAJETKU") && !roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
     return { error: "Nemáte oprávnenie mazať prílohy." }
   }
 

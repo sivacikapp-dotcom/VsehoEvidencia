@@ -40,7 +40,7 @@ export async function GET(
   if (!attachment) return new NextResponse("Not found", { status: 404 })
 
   const userRoles = session.user.roles as Role[]
-  const isManager = userRoles.includes("SPRAVCA_KARIET")
+  const isManager = userRoles.includes("SPRAVCA_MAJETKU")
   const isSecurityWorker = userRoles.includes("BEZPECNOSTNY_PRACOVNIK")
 
   let hasAccess = false

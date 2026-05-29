@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, Fragment } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -438,7 +438,7 @@ export default function DocumentDetailClient({
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-4 text-sm text-gray-500 dark:text-gray-400">
         <Link href="/dashboard/dokumenty" className="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
@@ -575,23 +575,23 @@ export default function DocumentDetailClient({
             </div>
           </div>
         ) : (
-          <dl className="px-6 py-5 grid grid-cols-2 gap-x-8 gap-y-5">
+          <dl className="px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5">
+            <Field label="Dátum schválenia">
+              <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>
+            </Field>
             {doc.datumPrvehoSchvalenia ? (
-              <>
-                <Field label="Prvé schválenie">
-                  <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumPrvehoSchvalenia)}</span>
-                </Field>
-                <Field label="Schválenie tejto verzie">
-                  <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>
-                </Field>
-              </>
+              <Field label="Prvé schválenie">
+                <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumPrvehoSchvalenia)}</span>
+              </Field>
             ) : (
-              <Field label="Dátum schválenia">
-                <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>
+              <Field label="Agenda">
+                <span className="text-sm text-gray-900 dark:text-gray-100">{doc.agendaName}</span>
               </Field>
             )}
-            <Field label="Agenda">
-              <span className="text-sm text-gray-900 dark:text-gray-100">{doc.agendaName}</span>
+            <Field label="Gestor dokumentu">
+              {currentGestor
+                ? <span className="text-sm text-gray-900 dark:text-gray-100">{currentGestor.name}</span>
+                : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
             </Field>
             <Field label="Príloha">
               {doc.prilohaPath ? (
@@ -604,11 +604,11 @@ export default function DocumentDetailClient({
                 <span className="text-sm text-gray-400 dark:text-gray-500">Žiadna príloha</span>
               )}
             </Field>
-            <Field label="Gestor dokumentu">
-              {currentGestor
-                ? <span className="text-sm text-gray-900 dark:text-gray-100">{currentGestor.name}</span>
-                : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
-            </Field>
+            {doc.datumPrvehoSchvalenia && (
+              <Field label="Agenda">
+                <span className="text-sm text-gray-900 dark:text-gray-100">{doc.agendaName}</span>
+              </Field>
+            )}
           </dl>
         )}
       </div>
@@ -624,8 +624,9 @@ export default function DocumentDetailClient({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-700/50 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                <th className="text-left px-5 py-2.5">Verzia</th>
+                <th className="text-left px-5 py-2.5">Ver.</th>
                 <th className="text-left px-5 py-2.5">Značka</th>
+                <th className="text-left px-5 py-2.5">Názov</th>
                 <th className="text-left px-5 py-2.5">Dátum schválenia</th>
                 <th className="text-left px-5 py-2.5">Stav</th>
               </tr>
@@ -641,6 +642,7 @@ export default function DocumentDetailClient({
                     <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">v{v.version}</span>
                   </td>
                   <td className="px-5 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">{v.znacka}</td>
+                  <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{v.nazov}</td>
                   <td className="px-5 py-3 text-gray-600 dark:text-gray-400 tabular-nums">{fmtDate(v.datumSchvalenia)}</td>
                   <td className="px-5 py-3">
                     {v.isLatest
@@ -682,7 +684,8 @@ export default function DocumentDetailClient({
                 <tr className="border-b border-gray-100 dark:border-gray-700/50 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
                   <th className="text-left px-5 py-2.5">Značka</th>
                   <th className="text-left px-5 py-2.5">Názov</th>
-                  <th className="text-left px-5 py-2.5">Schválenie</th>
+                  <th className="text-left px-5 py-2.5">Prvé schválenie</th>
+                  <th className="text-left px-5 py-2.5">Schválenie verzie</th>
                   <th className="text-left px-5 py-2.5">Dôvernosť</th>
                   <th className="text-left px-5 py-2.5">Súbor</th>
                   <th className="px-5 py-2.5" />
@@ -696,8 +699,8 @@ export default function DocumentDetailClient({
                   const isExpanded = expandedAttachHistory === rootId
 
                   return (
-                    <>
-                      <tr key={att.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <Fragment key={att.id}>
+                      <tr className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className="px-5 py-3">
                           <div className="flex items-center gap-1.5">
                             <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
@@ -712,10 +715,10 @@ export default function DocumentDetailClient({
                         </td>
                         <td className="px-5 py-3 text-gray-900 dark:text-gray-100">{att.nazov}</td>
                         <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-400 tabular-nums">
-                          <div>{fmtDate(att.datumSchvalenia)}</div>
-                          {att.datumPrvehoSchvalenia && (
-                            <div className="text-gray-400 dark:text-gray-500">Prvé: {fmtDate(att.datumPrvehoSchvalenia)}</div>
-                          )}
+                          {att.datumPrvehoSchvalenia ? fmtDate(att.datumPrvehoSchvalenia) : <span className="text-gray-400 dark:text-gray-500">—</span>}
+                        </td>
+                        <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-400 tabular-nums">
+                          {fmtDate(att.datumSchvalenia)}
                         </td>
                         <td className="px-5 py-3">
                           <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${confidentialityColors[att.confidentiality]}`}>
@@ -786,6 +789,9 @@ export default function DocumentDetailClient({
                             </div>
                           </td>
                           <td className="px-5 py-2 text-xs text-gray-500 dark:text-gray-400">{old.nazov}</td>
+                          <td className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 tabular-nums">
+                            {old.datumPrvehoSchvalenia ? fmtDate(old.datumPrvehoSchvalenia) : "—"}
+                          </td>
                           <td className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 tabular-nums">{fmtDate(old.datumSchvalenia)}</td>
                           <td className="px-5 py-2" colSpan={2}>
                             {old.filePath && old.canDownload ? (
@@ -810,7 +816,7 @@ export default function DocumentDetailClient({
                           </td>
                         </tr>
                       ))}
-                    </>
+                    </Fragment>
                   )
                 })}
               </tbody>
@@ -820,7 +826,7 @@ export default function DocumentDetailClient({
       </div>
 
       {/* Gestor dokumentu */}
-      {canManageGestors && doc.isLatest && (
+      {canManageGestors && doc.isLatest && !isAppAdmin && (
         <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
           <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
             <Shield size={15} className="text-gray-500" />

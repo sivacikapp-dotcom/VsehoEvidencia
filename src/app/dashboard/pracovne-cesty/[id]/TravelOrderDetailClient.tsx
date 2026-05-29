@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
@@ -143,7 +143,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
 
   const isOwner = order.userId === currentUserId
   const isSupervisor = order.supervisorId === currentUserId
-  const isSpravcaPC = userRoles.includes("SPRAVCA_PC")
+  const isSpravcaPC = userRoles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   const isLocked = order.status === "APPROVED"
 
   const er = order.expenseReport

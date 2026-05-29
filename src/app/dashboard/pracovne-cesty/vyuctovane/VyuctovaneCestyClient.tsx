@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
@@ -81,7 +81,7 @@ export default function VyuctovaneCestyClient({ orders, userRoles, isAppAdmin = 
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
-  const isSpravcaPC = userRoles.includes("SPRAVCA_PC")
+  const isSpravcaPC = userRoles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   const showEmployee = isSpravcaPC || isAppAdmin
   const hasActiveFilters = search || filterTypes.size > 0 || filterStatuses.size > 0
 

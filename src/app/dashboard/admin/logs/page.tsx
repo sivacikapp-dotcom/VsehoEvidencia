@@ -14,7 +14,7 @@ export default async function AdminLogsPage({
   const session = await getServerSession(authOptions)
   if (!session) redirect("/login")
   const callerRoles = (session.user as { roles?: string[] })?.roles ?? []
-  if (!callerRoles.includes("SPRAVCA_KARIET") && !callerRoles.includes("SPRAVCA_ROLI") && !callerRoles.includes("SPRAVCA_APLIKACIE")) redirect("/dashboard")
+  if (!callerRoles.includes("SPRAVCA_MAJETKU") && !callerRoles.includes("SPRAVCA_APLIKACIE") && !callerRoles.includes("SPRAVCA_APLIKACIE")) redirect("/dashboard")
 
   const sp = await searchParams
   const page = Math.max(1, parseInt((sp.page as string) ?? "1", 10) || 1)

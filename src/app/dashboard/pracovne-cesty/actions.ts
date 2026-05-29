@@ -27,7 +27,7 @@ async function getSession(opts: { mutation?: boolean } = {}) {
   const user = session.user as { id: string; name: string; roles: string[] }
   if (opts.mutation && user.roles.includes("SPRAVCA_APLIKACIE")
     && !user.roles.includes("NADRIADENY")
-    && !user.roles.includes("SPRAVCA_PC")) {
+    && !user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) {
     throw new Error("Rola Správca aplikácie nemá oprávnenie na úpravy.")
   }
   return user
@@ -301,12 +301,12 @@ export async function supervisorRejectTravelOrder(id: number, note: string) {
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }
 
-// ─── manager (SPRAVCA_PC) approve ─────────────────────────────────────────────
+// ─── manager (SPRAVCA_PRACOVNYCH_CIEST) approve ─────────────────────────────────────────────
 
 export async function managerApproveTravelOrder(id: number) {
   const user = await getSession({ mutation: true })
 
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
     where: { id },
@@ -340,7 +340,7 @@ export async function managerApproveTravelOrder(id: number) {
 export async function managerRejectTravelOrder(id: number, note: string) {
   const user = await getSession({ mutation: true })
 
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
     where: { id },
@@ -603,7 +603,7 @@ export async function supervisorRejectExpenseReport(travelOrderId: number, note:
 
 export async function managerApproveExpenseReport(travelOrderId: number) {
   const user = await getSession({ mutation: true })
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
     where: { id: travelOrderId },
@@ -637,7 +637,7 @@ export async function managerApproveExpenseReport(travelOrderId: number) {
 
 export async function managerRejectExpenseReport(travelOrderId: number, note: string) {
   const user = await getSession({ mutation: true })
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte rolu Správca PC.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte rolu Správca PC.")
 
   const order = await prisma.travelOrder.findUnique({
     where: { id: travelOrderId },

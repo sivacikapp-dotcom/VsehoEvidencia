@@ -44,7 +44,7 @@ export default async function DocumentDetailPage({
     prisma.user.findUnique({
       where: { id: userId },
       select: {
-        docRole: true,
+        roles: true,
         agendaGestors: { select: { agendaId: true } },
         documentGestors: { select: { documentId: true } },
         documentAccesses: { select: { documentId: true } },
@@ -59,7 +59,7 @@ export default async function DocumentDetailPage({
 
   if (!doc || doc.agendaId !== agendaId) notFound()
 
-  const isAdmin = userDoc?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = userDoc?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
   const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === agendaId) ?? false
   const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === documentId) ?? false
   const hasExplicitAccess = userDoc?.documentAccesses.some((g) => g.documentId === documentId) ?? false
@@ -93,7 +93,6 @@ export default async function DocumentDetailPage({
   const nextDocVersion = doc.version + 1
 
   const otherUsers = allUsers
-    .filter((u) => u.id !== userId)
     .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email }))
 
   const HIDDEN = "••••••"

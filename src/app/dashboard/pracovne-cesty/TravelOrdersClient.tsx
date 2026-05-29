@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
@@ -81,7 +81,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
   const [newType, setNewType] = useState<TravelOrderType>("TUZEMSKY")
   const [, startTransition] = useTransition()
 
-  const isSpravcaPC = userRoles.includes("SPRAVCA_PC")
+  const isSpravcaPC = userRoles.includes("SPRAVCA_PRACOVNYCH_CIEST")
   const showEmployee = isSpravcaPC || isAppAdmin
   const hasActiveFilters = search || filterTypes.size > 0 || filterStatuses.size > 0
 

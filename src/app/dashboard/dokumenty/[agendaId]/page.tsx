@@ -30,7 +30,7 @@ export default async function AgendaPage({
     prisma.user.findUnique({
       where: { id: userId },
       select: {
-        docRole: true,
+        roles: true,
         agendaGestors: { select: { agendaId: true } },
         documentGestors: { select: { documentId: true } },
         documentAccesses: { select: { documentId: true } },
@@ -45,7 +45,7 @@ export default async function AgendaPage({
   if (!agenda) notFound()
 
   const roles = (session.user as { roles?: string[] }).roles ?? []
-  const isAdmin = userDoc?.docRole === "SPRAVCA_DOKUMENTOV"
+  const isAdmin = userDoc?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
   const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === agendaId) ?? false
   const isAppAdmin = roles.includes("SPRAVCA_APLIKACIE") && !isAdmin && !isAgendaGestor
   const docGestorIds = new Set(!isAppAdmin ? (userDoc?.documentGestors.map((g) => g.documentId) ?? []) : [])

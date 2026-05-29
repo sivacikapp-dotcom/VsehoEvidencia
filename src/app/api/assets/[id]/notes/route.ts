@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server"
+﻿import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
@@ -40,12 +40,12 @@ export async function POST(
   // Determine permission and authorRole together
   let authorRole: string | null = null
   if (nt === "RECORD") {
-    if (roles.includes("SPRAVCA_KARIET")) authorRole = "SPRAVCA_KARIET"
+    if (roles.includes("SPRAVCA_MAJETKU")) authorRole = "SPRAVCA_MAJETKU"
   } else if (nt === "SECURITY") {
     if (roles.includes("BEZPECNOSTNY_PRACOVNIK")) authorRole = "BEZPECNOSTNY_PRACOVNIK"
   } else if (nt === "PUBLIC") {
-    if (roles.includes("SPRAVCA_KARIET")) {
-      authorRole = "SPRAVCA_KARIET"
+    if (roles.includes("SPRAVCA_MAJETKU")) {
+      authorRole = "SPRAVCA_MAJETKU"
     } else if (roles.includes("BEZPECNOSTNY_PRACOVNIK")) {
       authorRole = "BEZPECNOSTNY_PRACOVNIK"
     } else if (roles.includes("PRIJEMCA")) {

@@ -23,7 +23,7 @@ export async function createRateConfig(data: CreateRateConfigInput) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
   const user = session.user as { id: string; roles: string[] }
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte oprávnenie.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
 
   if (!data.validFrom) throw new Error("Dátum platnosti je povinný.")
   if (new Date(data.validFrom) > new Date()) throw new Error("Dátum platnosti nesmie byť v budúcnosti.")
@@ -66,7 +66,7 @@ export async function deleteRateConfig(id: number) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
   const user = session.user as { id: string; roles: string[] }
-  if (!user.roles.includes("SPRAVCA_PC")) throw new Error("Nemáte oprávnenie.")
+  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
   const config = await prisma.travelRateConfig.findUnique({ where: { id }, select: { validFrom: true } })
   await prisma.travelRateConfig.delete({ where: { id } })
   await createAuditLog({

@@ -31,29 +31,33 @@ interface NavbarProps {
 }
 
 const roleLabels: Record<Role, string> = {
-  SPRAVCA_KARIET: "Správca kariet",
-  BEZPECNOSTNY_PRACOVNIK: "BP",
-  NADRIADENY: "Nadriadený",
-  PRIJEMCA: "Príjemca",
-  SPRAVCA_PC: "Správca PC",
-  SPRAVCA_ROLI: "Správca rolí",
-  SPRAVCA_APLIKACIE: "Správca aplikácie",
-  SPRAVCA_REGISTRATURY: "Správca registratúry",
-  PRACOVNIK_PODATELNE: "Prac. podateľne",
+  PRIJEMCA:                 "Príjemca",
+  NADRIADENY:               "Nadriadený",
+  BEZPECNOSTNY_PRACOVNIK:   "BP",
+  SPRAVCA_MAJETKU:          "Správca majetku",
+  SPRAVCA_PRACOVNYCH_CIEST: "Správca PC",
+  SPRAVCA_APLIKACIE:        "Správca aplikácie",
+  SPRAVCA_REGISTRATURY:     "Správca registratúry",
+  PRACOVNIK_PODATELNE:      "Prac. podateľne",
   SPRACOVATEL_REGISTRATURY: "Spracovateľ",
+  SPRAVCA_DOKUMENTOV:       "Správca dokumentov",
+  GESTOR_AGENDY:            "Gestor agendy",
+  GESTOR_DOKUMENTU:         "Gestor dokumentu",
 }
 
 const roleBadgeColors: Record<Role, string> = {
-  SPRAVCA_KARIET:       "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  BEZPECNOSTNY_PRACOVNIK: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
-  NADRIADENY:           "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
-  PRIJEMCA:             "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
-  SPRAVCA_PC:           "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
-  SPRAVCA_ROLI:         "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  SPRAVCA_APLIKACIE:    "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  SPRAVCA_REGISTRATURY: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
-  PRACOVNIK_PODATELNE:  "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+  PRIJEMCA:                 "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300",
+  NADRIADENY:               "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300",
+  BEZPECNOSTNY_PRACOVNIK:   "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+  SPRAVCA_MAJETKU:          "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  SPRAVCA_PRACOVNYCH_CIEST: "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
+  SPRAVCA_APLIKACIE:        "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  SPRAVCA_REGISTRATURY:     "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  PRACOVNIK_PODATELNE:      "bg-teal-100 text-teal-700 dark:bg-teal-900/40 dark:text-teal-300",
   SPRACOVATEL_REGISTRATURY: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  SPRAVCA_DOKUMENTOV:       "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  GESTOR_AGENDY:            "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
+  GESTOR_DOKUMENTU:         "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
 }
 
 const NOTIF_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {

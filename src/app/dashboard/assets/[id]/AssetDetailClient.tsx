@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useRef } from "react"
 import Link from "next/link"
@@ -844,7 +844,7 @@ const NOTE_TYPE_CONFIG: Record<AssetNoteType, { label: string; accent: string; a
   RECORD: {
     label: "Evidenčná poznámka",
     accent: "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300",
-    authorRole: "SPRAVCA_KARIET",
+    authorRole: "SPRAVCA_MAJETKU",
   },
   SECURITY: {
     label: "BP poznámka",
@@ -1059,7 +1059,7 @@ function AttachmentsPanel({
   const [visibility, setVisibility] = useState<AttachmentVisibility>("Everyone")
   const hasBothRoles = isManager && isSecurityWorker
   const [ownRoleSelection, setOwnRoleSelection] = useState<string[]>(
-    isManager && isSecurityWorker ? [] : isManager ? ["SPRAVCA_KARIET"] : ["BEZPECNOSTNY_PRACOVNIK"]
+    isManager && isSecurityWorker ? [] : isManager ? ["SPRAVCA_MAJETKU"] : ["BEZPECNOSTNY_PRACOVNIK"]
   )
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState("")
@@ -1075,7 +1075,7 @@ function AttachmentsPanel({
     setEditingId(a.id)
     setEditVisibility(a.visibility)
     const editorRoles: string[] = []
-    if (isManager) editorRoles.push("SPRAVCA_KARIET")
+    if (isManager) editorRoles.push("SPRAVCA_MAJETKU")
     if (isSecurityWorker) editorRoles.push("BEZPECNOSTNY_PRACOVNIK")
     setEditRoleSelection(a.uploaderRoles.filter((r) => editorRoles.includes(r)))
     setEditError("")
@@ -1191,8 +1191,8 @@ function AttachmentsPanel({
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    checked={ownRoleSelection.includes("SPRAVCA_KARIET")}
-                    onChange={() => toggleOwnRole("SPRAVCA_KARIET")}
+                    checked={ownRoleSelection.includes("SPRAVCA_MAJETKU")}
+                    onChange={() => toggleOwnRole("SPRAVCA_MAJETKU")}
                     className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Správca kariet</span>
@@ -1304,8 +1304,8 @@ function AttachmentsPanel({
                         <label className="flex items-center gap-2 cursor-pointer select-none">
                           <input
                             type="checkbox"
-                            checked={editRoleSelection.includes("SPRAVCA_KARIET")}
-                            onChange={() => toggleEditRole("SPRAVCA_KARIET")}
+                            checked={editRoleSelection.includes("SPRAVCA_MAJETKU")}
+                            onChange={() => toggleEditRole("SPRAVCA_MAJETKU")}
                             className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                           <span className="text-sm text-gray-700 dark:text-gray-300">Správca kariet</span>
@@ -1637,7 +1637,7 @@ export default function AssetDetailClient({
                   noteType="PUBLIC"
                   canAdd={isManager || isSecurityWorker || isCurrentRecipient}
                   canEditNote={(note) => {
-                    if (note.authorRole === "SPRAVCA_KARIET") return isManager
+                    if (note.authorRole === "SPRAVCA_MAJETKU") return isManager
                     if (note.authorRole === "BEZPECNOSTNY_PRACOVNIK") return isSecurityWorker
                     if (note.authorRole === "PRIJEMCA") return note.createdById === userId
                     return false
@@ -1652,7 +1652,7 @@ export default function AssetDetailClient({
                     notes={recordNotes}
                     noteType="RECORD"
                     canAdd={true}
-                    canEditNote={(note) => note.authorRole === "SPRAVCA_KARIET" && isManager}
+                    canEditNote={(note) => note.authorRole === "SPRAVCA_MAJETKU" && isManager}
                   />
                 </div>
               )}
