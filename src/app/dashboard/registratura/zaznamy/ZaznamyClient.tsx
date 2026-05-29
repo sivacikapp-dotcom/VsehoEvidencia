@@ -2,37 +2,42 @@
 
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, FileText, ExternalLink } from "lucide-react"
-import { regZaznamStatusLabels, regZaznamStatusColors, regZaznamTypeLabels } from "@/lib/regLabels"
-import type { RegZaznamStatus, RegZaznamType } from "@/generated/prisma/enums"
+import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, ExternalLink, Inbox, Send } from "lucide-react"
+import {
+  regZaznamTypeLabels,
+  zaznamKategoriaLabels, zaznamKategoriaColors,
+  zaznamStavLabels, zaznamStavColors,
+  zaznamDovernostLabels,
+} from "@/lib/regLabels"
+import type { ZaznamKategoria, ZaznamStav, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
 import { createZaznam } from "./actions"
 
 type ZaznamRow = {
   id: number
   cisloZaznamu: string
-  planZnacka: string
-  planNazov: string
+  kategoria: ZaznamKategoria
+  rok: number
   spracovatel: string
-  typZaznamu: RegZaznamType
-  status: RegZaznamStatus
-  hasFile: boolean
-  originalName: string | null
-  fileSize: number | null
-  postaRef: string | null
+  utvar: string | null
+  formaZaznamu: RegZaznamType
+  vec: string | null
+  stav: ZaznamStav
+  dovernost: ZaznamDovernost
   pocetSpisov: number
+  pocetPriloh: number
   createdAt: string
 }
 
 interface Props {
   zaznamy: ZaznamRow[]
-  plans: { id: number; znacka: string; nazov: string }[]
+  utvary: { id: number; nazov: string }[]
   isAdmin: boolean
   canCreate: boolean
 }
 
-type SortKey = "cislo" | "plan" | "typ" | "status" | "datum"
+type SortKey = "cislo" | "kategoria" | "rok" | "vec" | "stav" | "datum"
 
-const thBase = "text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap"
+const thBase = "text-left px-4 py-3 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap text-xs uppercase tracking-wide"
 
 function Th({ label, colKey, sortKey, sortDir, onSort }: {
   label: string; colKey: SortKey
@@ -51,15 +56,19 @@ function Th({ label, colKey, sortKey, sortDir, onSort }: {
   )
 }
 
-export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Props) {
+const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+const labelCls = "block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
+
+export default function ZaznamyClient({ zaznamy, utvary, isAdmin, canCreate }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
-  const [filterStatus, setFilterStatus] = useState<RegZaznamStatus | "">("")
-  const [filterTyp, setFilterTyp] = useState<RegZaznamType | "">("")
+  const [filterStav, setFilterStav] = useState<ZaznamStav | "">("")
+  const [filterKategoria, setFilterKategoria] = useState<ZaznamKategoria | "">("")
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [showNew, setShowNew] = useState(false)
+  const [newKategoria, setNewKategoria] = useState<ZaznamKategoria | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
 
@@ -72,21 +81,30 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
     let rows = zaznamy
     if (search) {
       const q = search.toLowerCase()
-      rows = rows.filter(r => r.cisloZaznamu.toLowerCase().includes(q) || r.planNazov.toLowerCase().includes(q) || r.planZnacka.toLowerCase().includes(q))
+      rows = rows.filter(r =>
+        r.cisloZaznamu.toLowerCase().includes(q) ||
+        (r.vec ?? "").toLowerCase().includes(q)
+      )
     }
-    if (filterStatus) rows = rows.filter(r => r.status === filterStatus)
-    if (filterTyp) rows = rows.filter(r => r.typZaznamu === filterTyp)
+    if (filterStav) rows = rows.filter(r => r.stav === filterStav)
+    if (filterKategoria) rows = rows.filter(r => r.kategoria === filterKategoria)
     return rows
-  }, [zaznamy, search, filterStatus, filterTyp])
+  }, [zaznamy, search, filterStav, filterKategoria])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
     return [...filtered].sort((a, b) => {
-      const av = sortKey === "cislo" ? a.cisloZaznamu : sortKey === "plan" ? a.planZnacka : sortKey === "typ" ? a.typZaznamu : sortKey === "status" ? a.status : a.createdAt
-      const bv = sortKey === "cislo" ? b.cisloZaznamu : sortKey === "plan" ? b.planZnacka : sortKey === "typ" ? b.typZaznamu : sortKey === "status" ? b.status : b.createdAt
+      const av = sortKey === "cislo" ? a.cisloZaznamu : sortKey === "kategoria" ? a.kategoria : sortKey === "rok" ? String(a.rok) : sortKey === "vec" ? (a.vec ?? "") : sortKey === "stav" ? a.stav : a.createdAt
+      const bv = sortKey === "cislo" ? b.cisloZaznamu : sortKey === "kategoria" ? b.kategoria : sortKey === "rok" ? String(b.rok) : sortKey === "vec" ? (b.vec ?? "") : sortKey === "stav" ? b.stav : b.createdAt
       return sortDir === "asc" ? av.localeCompare(bv, "sk") : bv.localeCompare(av, "sk")
     })
   }, [filtered, sortKey, sortDir])
+
+  function openNew(kat: ZaznamKategoria) {
+    setNewKategoria(kat)
+    setShowNew(true)
+    setError("")
+  }
 
   async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -109,10 +127,16 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
           </p>
         </div>
         {canCreate && (
-          <button onClick={() => { setShowNew(true); setError("") }}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus size={15} /> Nový záznam
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => openNew("PRIJATY")}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
+              <Inbox size={15} /> Nový prijatý
+            </button>
+            <button onClick={() => openNew("VYTVORENY")}
+              className="flex items-center gap-2 px-3 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 transition-colors">
+              <Send size={15} /> Nový vytvorený
+            </button>
+          </div>
         )}
       </div>
 
@@ -123,19 +147,22 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Hľadať..."
             className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56" />
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as RegZaznamStatus | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Stav: všetky</option>
-          {(Object.entries(regZaznamStatusLabels) as [RegZaznamStatus, string][]).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <select value={filterTyp} onChange={e => setFilterTyp(e.target.value as RegZaznamType | "")}
+        <select value={filterKategoria} onChange={e => setFilterKategoria(e.target.value as ZaznamKategoria | "")}
           className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
           <option value="">Typ: všetky</option>
-          <option value="ELEKTRONICKY">Elektronický</option>
-          <option value="NEELEKTRONICKY">Neelektronický</option>
+          <option value="PRIJATY">Prijatý</option>
+          <option value="VYTVORENY">Vytvorený</option>
         </select>
-        {(search || filterStatus || filterTyp) && (
-          <button onClick={() => { setSearch(""); setFilterStatus(""); setFilterTyp("") }}
+        <select value={filterStav} onChange={e => setFilterStav(e.target.value as ZaznamStav | "")}
+          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <option value="">Stav: všetky</option>
+          <option value="PRIDELENY">Pridelený</option>
+          <option value="NOVY">Vytvorený</option>
+          <option value="V_SPISE">V spise</option>
+          <option value="VYBAVENY">Vybavený</option>
+        </select>
+        {(search || filterStav || filterKategoria) && (
+          <button onClick={() => { setSearch(""); setFilterStav(""); setFilterKategoria("") }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors">
             <X size={12} /> Zrušiť
           </button>
@@ -143,7 +170,7 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
         {sortKey && (
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
             {sortDir === "asc" ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-            <span>{{ cislo: "Číslo záznamu", plan: "Plán", typ: "Typ", status: "Stav", datum: "Dátum" }[sortKey]}</span>
+            <span>{{ cislo: "Číslo", kategoria: "Typ", rok: "Rok", vec: "Vec", stav: "Stav", datum: "Dátum" }[sortKey]}</span>
             <button type="button" onClick={() => setSortKey(null)}><X size={11} /></button>
           </div>
         )}
@@ -154,13 +181,13 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
         <table className="w-full text-sm">
           <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
             <tr>
-              <Th label="Číslo záznamu" colKey="cislo" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-              <Th label="Reg. plán" colKey="plan" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-              <Th label="Typ" colKey="typ" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <Th label="Číslo" colKey="cislo" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <Th label="Typ" colKey="kategoria" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <Th label="Rok" colKey="rok" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <Th label="Vec" colKey="vec" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
               {isAdmin && <th className={thBase}>Spracovateľ</th>}
-              <Th label="Stav" colKey="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-              <th className={thBase}>Súbor</th>
-              <Th label="Vytvorený" colKey="datum" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <Th label="Stav" colKey="stav" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+              <th className={thBase}>Dôvernosť</th>
               <th className="w-10" />
             </tr>
           </thead>
@@ -172,32 +199,25 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
               <tr key={row.id} onClick={() => router.push(`/dashboard/registratura/zaznamy/${row.id}`)}
                 className="hover:bg-gray-50 dark:hover:bg-gray-800/60 cursor-pointer">
                 <td className="px-4 py-3 font-mono text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.cisloZaznamu}</td>
-                <td className="px-4 py-3 max-w-xs">
-                  <p className="font-medium text-gray-900 dark:text-white">{row.planZnacka}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{row.planNazov}</p>
+                <td className="px-4 py-3">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 w-fit ${zaznamKategoriaColors[row.kategoria]}`}>
+                    {row.kategoria === "PRIJATY" ? <Inbox size={11} /> : <Send size={11} />}
+                    {zaznamKategoriaLabels[row.kategoria]}
+                  </span>
                 </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">
-                  {regZaznamTypeLabels[row.typZaznamu]}
+                <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.rok}</td>
+                <td className="px-4 py-3 max-w-xs">
+                  <p className="text-gray-900 dark:text-white truncate">{row.vec ?? <span className="text-gray-400 italic">—</span>}</p>
                 </td>
                 {isAdmin && <td className="px-4 py-3 text-gray-600 dark:text-gray-300 whitespace-nowrap">{row.spracovatel}</td>}
                 <td className="px-4 py-3">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${regZaznamStatusColors[row.status]}`}>
-                    {regZaznamStatusLabels[row.status]}
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamStavColors[row.stav]}`}>
+                    {zaznamStavLabels[row.stav]}
                   </span>
                 </td>
-                <td className="px-4 py-3">
-                  {row.hasFile && row.originalName ? (
-                    <span className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300">
-                      <FileText size={12} className="shrink-0" />
-                      <span className="truncate max-w-[120px]">{row.originalName}</span>
-                    </span>
-                  ) : row.typZaznamu === "ELEKTRONICKY" ? (
-                    <span className="text-xs text-amber-600 dark:text-amber-400">Bez súboru</span>
-                  ) : (
-                    <span className="text-gray-400 text-xs">—</span>
-                  )}
+                <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300">
+                  {zaznamDovernostLabels[row.dovernost]}
                 </td>
-                <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">{row.createdAt}</td>
                 <td className="px-4 py-3"><ExternalLink size={14} className="text-gray-400" /></td>
               </tr>
             ))}
@@ -206,35 +226,56 @@ export default function ZaznamyClient({ zaznamy, plans, isAdmin, canCreate }: Pr
       </div>
 
       {/* New Záznam Modal */}
-      {showNew && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md">
+      {showNew && newKategoria && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg my-4">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="font-semibold text-gray-900 dark:text-white">Nový registratúrny záznam</h2>
+              <div>
+                <h2 className="font-semibold text-gray-900 dark:text-white">
+                  {newKategoria === "PRIJATY" ? "Nový prijatý záznam" : "Nový vytvorený záznam"}
+                </h2>
+                <span className={`mt-1 inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${zaznamKategoriaColors[newKategoria]}`}>
+                  {newKategoria === "PRIJATY" ? <Inbox size={11} /> : <Send size={11} />}
+                  {zaznamKategoriaLabels[newKategoria]}
+                </span>
+              </div>
               <button onClick={() => setShowNew(false)}><X size={18} className="text-gray-400" /></button>
             </div>
             <form onSubmit={handleCreate} className="p-6 space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Registratúrny plán *</label>
-                <select name="planId" required
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">— Vyberte —</option>
-                  {plans.map(p => <option key={p.id} value={p.id}>{p.znacka} – {p.nazov}</option>)}
-                </select>
+              <input type="hidden" name="kategoria" value={newKategoria} />
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Forma záznamu *</label>
+                  <select name="formaZaznamu" className={inputCls}>
+                    <option value="ELEKTRONICKY">Elektronický</option>
+                    <option value="NEELEKTRONICKY">Neelektronický</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className={labelCls}>Útvar</label>
+                  <select name="utvarId" className={inputCls}>
+                    <option value="">— Bez útvaru —</option>
+                    {utvary.map(u => <option key={u.id} value={u.id}>{u.nazov}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={labelCls}>Stupeň dôvernosti</label>
+                  <select name="dovernost" className={inputCls}>
+                    <option value="VEREJNE">Verejné</option>
+                    <option value="INTERNE">Interné</option>
+                    <option value="DOVERNE">Dôverné</option>
+                  </select>
+                </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Typ záznamu *</label>
-                <select name="typZaznamu" required
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="ELEKTRONICKY">Elektronický</option>
-                  <option value="NEELEKTRONICKY">Neelektronický</option>
-                </select>
+                <label className={labelCls}>Vec</label>
+                <input type="text" name="vec" className={inputCls} placeholder="Stručný popis obsahu záznamu" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Umiestnenie fyzického originálu</label>
-                <input type="text" name="umiestnenie"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="napr. Šanón 2026/A, Regál 3" />
+                <label className={labelCls}>Popis</label>
+                <textarea name="popis" rows={2} className={`${inputCls} resize-none`} placeholder="Podrobnejší popis..." />
               </div>
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">

@@ -6,6 +6,7 @@ import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, ExternalLink, Fol
 import { spisStatusLabels, spisStatusColors } from "@/lib/regLabels"
 import type { SpisStatus } from "@/generated/prisma/enums"
 import { createSpis } from "./actions"
+import PlanTreePicker from "@/components/PlanTreePicker"
 
 type SpisRow = {
   id: number
@@ -23,7 +24,7 @@ type SpisRow = {
 
 interface Props {
   spisy: SpisRow[]
-  plans: { id: number; znacka: string; nazov: string }[]
+  plans: { id: number; znacka: string; nazov: string; lehota: number; maArchivnu: boolean }[]
   isAdmin: boolean
   canCreate: boolean
 }

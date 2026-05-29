@@ -420,7 +420,7 @@ export default function DocumentsClient({
                   <Th label="Dátum schválenia" colKey="datumSchvalenia" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <Th label="Dôvernosť" colKey="confidentiality" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <th className={thBase}>Gestor</th>
-                  <th className={thBase}>Príloha</th>
+                  <th className={thBase}>Súbor</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -624,7 +624,7 @@ export default function DocumentsClient({
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Príloha (súbor)
+                  Súbor
                 </label>
                 {modal === "edit" && editDoc?.prilohaName && !removePriloha ? (
                   <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
@@ -641,7 +641,7 @@ export default function DocumentsClient({
                   <div className="space-y-1">
                     {removePriloha && (
                       <p className="text-xs text-orange-600 dark:text-orange-400">
-                        Príloha bude odstránená.{" "}
+                        Súbor bude odstránený.{" "}
                         <button onClick={() => setRemovePriloha(false)} className="underline">
                           Zrušiť
                         </button>
@@ -782,7 +782,7 @@ function AgendaSearchResults({
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <File size={11} className="text-gray-400 shrink-0" />
                     <span className="text-xs text-gray-400 dark:text-gray-500">
-                      Príloha súbor: <HighlightText text={r.matchedAttFile} query={query} />
+                      Súbor prílohy: <HighlightText text={r.matchedAttFile} query={query} />
                     </span>
                   </div>
                 )}

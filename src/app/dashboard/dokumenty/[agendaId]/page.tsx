@@ -37,6 +37,7 @@ export default async function AgendaPage({
       },
     }),
     prisma.user.findMany({
+      where: { roles: { has: "GESTOR_AGENDY" } },
       select: { id: true, firstName: true, lastName: true, email: true },
       orderBy: { lastName: "asc" },
     }),

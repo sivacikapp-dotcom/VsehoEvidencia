@@ -16,43 +16,44 @@ export default async function ZaznamyPage() {
 
   const whereClause = isAdmin ? {} : { spracovatelId: userId }
 
-  const [zaznamyRaw, plans] = await Promise.all([
+  const [zaznamyRaw, utvary] = await Promise.all([
     prisma.regZaznam.findMany({
       where: whereClause,
       orderBy: { createdAt: "desc" },
       include: {
-        plan: { select: { znacka: true, nazov: true } },
         spracovatel: { select: { firstName: true, lastName: true } },
-        posta: { select: { poradoveCislo: true } },
-        _count: { select: { spisy: true } },
+        utvar: { select: { nazov: true } },
+        _count: { select: { spisy: true, prilohy: true } },
       },
     }),
-    prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" } }),
+    prisma.utvar.findMany({ orderBy: { nazov: "asc" } }),
   ])
 
   const zaznamy = zaznamyRaw.map(z => ({
     id: z.id,
     cisloZaznamu: z.cisloZaznamu,
-    planZnacka: z.plan.znacka,
-    planNazov: z.plan.nazov,
+    kategoria: z.kategoria,
+    rok: z.rok,
     spracovatel: `${z.spracovatel.firstName} ${z.spracovatel.lastName}`,
-    typZaznamu: z.typZaznamu,
-    status: z.status,
-    hasFile: !!z.storedName,
-    originalName: z.originalName,
-    fileSize: z.fileSize,
-    postaRef: z.posta?.poradoveCislo ?? null,
+    utvar: z.utvar?.nazov ?? null,
+    formaZaznamu: z.formaZaznamu,
+    vec: z.vec,
+    stav: z.stav,
+    dovernost: z.dovernost,
     pocetSpisov: z._count.spisy,
+    pocetPriloh: z._count.prilohy,
     createdAt: z.createdAt.toISOString().split("T")[0],
   }))
+
+  const canCreate = isSpracovatel && !roles.includes("SPRAVCA_APLIKACIE")
 
   return (
     <div className="flex-1 overflow-auto">
       <ZaznamyClient
         zaznamy={zaznamy}
-        plans={plans.map(p => ({ id: p.id, znacka: p.znacka, nazov: p.nazov }))}
+        utvary={utvary.map(u => ({ id: u.id, nazov: u.nazov }))}
         isAdmin={isAdmin}
-        canCreate={isSpracovatel}
+        canCreate={canCreate}
       />
     </div>
   )

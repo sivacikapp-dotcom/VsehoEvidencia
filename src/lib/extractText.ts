@@ -1,5 +1,6 @@
 import { readFile } from "fs/promises"
 import path from "path"
+import { PDFParse } from "pdf-parse"
 
 const TEXT_EXTS = new Set([".txt", ".csv", ".md", ".log"])
 const MAX_CHARS = 200_000
@@ -15,10 +16,10 @@ export async function extractDocText(storedName: string): Promise<string | null>
     }
 
     if (ext === ".pdf") {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>
       const buffer = await readFile(fullPath)
-      const result = await pdfParse(buffer)
+      const parser = new PDFParse({ data: buffer })
+      const result = await parser.getText()
+      await parser.destroy()
       return result.text.slice(0, MAX_CHARS)
     }
 

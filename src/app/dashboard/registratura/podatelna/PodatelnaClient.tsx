@@ -62,7 +62,7 @@ function fmtSize(bytes: number) {
 
 type ModalState =
   | { mode: "none" }
-  | { mode: "new" }
+  | { mode: "new"; smer: "DOSLA" | "ODOSLANA" }
   | { mode: "edit"; row: PostaRow }
   | { mode: "preklop"; row: PostaRow }
 
@@ -158,10 +158,16 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Došlá a odoslaná pošta</p>
         </div>
         {canWrite && (
-          <button onClick={() => { setModal({ mode: "new" }); setError("") }}
-            className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
-            <Plus size={15} /> Nová pošta
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => { setModal({ mode: "new", smer: "DOSLA" }); setError("") }}
+              className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors">
+              <Inbox size={15} /> Nová došlá
+            </button>
+            <button onClick={() => { setModal({ mode: "new", smer: "ODOSLANA" }); setError("") }}
+              className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
+              <Send size={15} /> Nová odoslaná
+            </button>
+          </div>
         )}
       </div>
 
@@ -281,29 +287,43 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="font-semibold text-gray-900 dark:text-white">
-                {modal.mode === "new" ? "Nová pošta" : "Upraviť poštu"}
+                {modal.mode === "new"
+                  ? (modal.smer === "DOSLA" ? "Nová došlá pošta" : "Nová odoslaná pošta")
+                  : "Upraviť poštu"}
               </h2>
               <button onClick={() => setModal({ mode: "none" })}><X size={18} className="text-gray-400" /></button>
             </div>
             <form onSubmit={handleSubmitPosta} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Smer *</label>
-                  <select name="smer" defaultValue={editRow?.smer ?? "DOSLA"} required
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    <option value="DOSLA">Došlá</option>
-                    <option value="ODOSLANA">Odoslaná</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spôsob doručenia *</label>
-                  <select name="sposob" defaultValue={editRow?.sposob ?? "POSTA"} required
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    {(Object.entries(postaSpusobLabels) as [PostaSpusob, string][]).map(([k, v]) => (
-                      <option key={k} value={k}>{v}</option>
-                    ))}
-                  </select>
-                </div>
+              {/* Direction — fixed for new, read-only for edit */}
+              {modal.mode === "new" ? (
+                <>
+                  <input type="hidden" name="smer" value={modal.smer} />
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg ${modal.smer === "DOSLA" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"}`}>
+                      {modal.smer === "DOSLA" ? <Inbox size={14} /> : <Send size={14} />}
+                      {modal.smer === "DOSLA" ? "Došlá pošta" : "Odoslaná pošta"}
+                    </span>
+                  </div>
+                </>
+              ) : editRow ? (
+                <>
+                  <input type="hidden" name="smer" value={editRow.smer} />
+                  <div className="flex items-center gap-2">
+                    <span className={`inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg ${editRow.smer === "DOSLA" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400"}`}>
+                      {editRow.smer === "DOSLA" ? <Inbox size={14} /> : <Send size={14} />}
+                      {editRow.smer === "DOSLA" ? "Došlá pošta" : "Odoslaná pošta"}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spôsob doručenia *</label>
+                <select name="sposob" defaultValue={editRow?.sposob ?? "POSTA"} required
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  {(Object.entries(postaSpusobLabels) as [PostaSpusob, string][]).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum doručenia/odoslania *</label>

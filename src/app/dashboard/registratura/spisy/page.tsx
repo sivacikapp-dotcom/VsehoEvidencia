@@ -26,7 +26,7 @@ export default async function SpisyPage() {
         _count: { select: { zaznamy: true } },
       },
     }),
-    prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" } }),
+    prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" }, select: { id: true, znacka: true, nazov: true, lehota: true, maArchivnu: true } }),
   ])
 
   const spisy = spisyRaw.map(s => ({

@@ -24,7 +24,7 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
         include: {
           zaznam: {
             select: {
-              id: true, cisloZaznamu: true, typZaznamu: true, status: true,
+              id: true, cisloZaznamu: true, formaZaznamu: true, stav: true, kategoria: true,
               plan: { select: { znacka: true, nazov: true } },
             },
           },
@@ -35,15 +35,13 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
   })
   if (!spis) notFound()
 
-  // RBAC: spracovatel can only see their own spisy
   if (!isAdmin && spis.spracovatelId !== userId) redirect("/dashboard/registratura/spisy")
 
-  const plans = await prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" } })
+  const plans = await prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" }, select: { id: true, znacka: true, nazov: true, lehota: true, maArchivnu: true } })
 
-  // For adding zaznamy: load available zaznamy for this user
   const availableZaznamy = await prisma.regZaznam.findMany({
-    where: isAdmin ? { status: { not: "VYRADENY" } } : { spracovatelId: userId, status: { not: "VYRADENY" } },
-    select: { id: true, cisloZaznamu: true, typZaznamu: true, status: true, plan: { select: { znacka: true, nazov: true } } },
+    where: isAdmin ? { stav: { not: "VYBAVENY" } } : { spracovatelId: userId, stav: { not: "VYBAVENY" } },
+    select: { id: true, cisloZaznamu: true, formaZaznamu: true, stav: true, kategoria: true, plan: { select: { znacka: true, nazov: true } } },
     orderBy: { cisloZaznamu: "asc" },
   })
 
@@ -62,8 +60,9 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
     zaznamy: spis.zaznamy.map(sz => ({
       id: sz.zaznam.id,
       cisloZaznamu: sz.zaznam.cisloZaznamu,
-      typZaznamu: sz.zaznam.typZaznamu,
-      status: sz.zaznam.status,
+      formaZaznamu: sz.zaznam.formaZaznamu,
+      stav: sz.zaznam.stav,
+      kategoria: sz.zaznam.kategoria,
       planZnacka: sz.zaznam.plan.znacka,
       planNazov: sz.zaznam.plan.nazov,
       addedAt: sz.addedAt.toISOString().split("T")[0],
@@ -82,8 +81,9 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
           .map(z => ({
             id: z.id,
             cisloZaznamu: z.cisloZaznamu,
-            typZaznamu: z.typZaznamu,
-            status: z.status,
+            formaZaznamu: z.formaZaznamu,
+            stav: z.stav,
+            kategoria: z.kategoria,
             planZnacka: z.plan.znacka,
             planNazov: z.plan.nazov,
           }))}

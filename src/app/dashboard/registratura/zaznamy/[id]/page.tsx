@@ -18,9 +18,12 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
   const zaznam = await prisma.regZaznam.findUnique({
     where: { id: parseInt(id) },
     include: {
-      plan: true,
       spracovatel: { select: { id: true, firstName: true, lastName: true } },
+      utvar: { select: { id: true, nazov: true } },
       posta: { select: { id: true, poradoveCislo: true, vec: true } },
+      odosielatel: true,
+      adresati: { orderBy: { poradie: "asc" } },
+      prilohy: { orderBy: { cislo: "asc" } },
       spisy: {
         include: { spis: { select: { id: true, cisloSpisu: true, nazov: true, status: true } } },
       },
@@ -28,42 +31,52 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
   })
   if (!zaznam) notFound()
 
-  // RBAC: spracovatel can only see their own records
   if (!isAdmin && zaznam.spracovatelId !== userId) redirect("/dashboard/registratura/zaznamy")
 
-  const plans = await prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" } })
+  const utvary = await prisma.utvar.findMany({ orderBy: { nazov: "asc" } })
 
-  const data = {
-    id: zaznam.id,
-    cisloZaznamu: zaznam.cisloZaznamu,
-    plan: { id: zaznam.plan.id, znacka: zaznam.plan.znacka, nazov: zaznam.plan.nazov, lehota: zaznam.plan.lehota, maArchivnu: zaznam.plan.maArchivnu },
-    spracovatel: `${zaznam.spracovatel.firstName} ${zaznam.spracovatel.lastName}`,
-    typZaznamu: zaznam.typZaznamu,
-    umiestnenieFyzicke: zaznam.umiestnenieFyzicke,
-    originalName: zaznam.originalName,
-    fileSize: zaznam.fileSize,
-    fileHash: zaznam.fileHash,
-    status: zaznam.status,
-    posta: zaznam.posta ? { id: zaznam.posta.id, poradoveCislo: zaznam.posta.poradoveCislo, vec: zaznam.posta.vec } : null,
-    spisy: zaznam.spisy.map(sz => ({
-      id: sz.spis.id,
-      cisloSpisu: sz.spis.cisloSpisu,
-      nazov: sz.spis.nazov,
-      status: sz.spis.status,
-    })),
-    createdAt: zaznam.createdAt.toISOString().split("T")[0],
-    updatedAt: zaznam.updatedAt.toISOString().split("T")[0],
-  }
-
-  const canEdit = !isAdmin || (isAdmin && !roles.includes("SPRAVCA_APLIKACIE"))
-  // SPRAVCA_REGISTRATURY has read-only per spec (no create/edit), but SPRACOVATEL can edit own
-  const canManage = isSpracovatel && zaznam.spracovatelId === userId
+  const canManage = (isSpracovatel && zaznam.spracovatelId === userId) ||
+    (isAdmin && !roles.includes("SPRAVCA_APLIKACIE"))
 
   return (
     <div className="flex-1 overflow-auto">
       <ZaznamDetailClient
-        zaznam={data}
-        plans={plans.map(p => ({ id: p.id, znacka: p.znacka, nazov: p.nazov }))}
+        zaznam={{
+          id: zaznam.id,
+          cisloZaznamu: zaznam.cisloZaznamu,
+          kategoria: zaznam.kategoria,
+          rok: zaznam.rok,
+          spracovatel: `${zaznam.spracovatel.firstName} ${zaznam.spracovatel.lastName}`,
+          utvar: zaznam.utvar ? { id: zaznam.utvar.id, nazov: zaznam.utvar.nazov } : null,
+          formaZaznamu: zaznam.formaZaznamu,
+          vec: zaznam.vec,
+          popis: zaznam.popis,
+          stav: zaznam.stav,
+          sposobVybavenia: zaznam.sposobVybavenia,
+          dovernost: zaznam.dovernost,
+          posta: zaznam.posta ? { id: zaznam.posta.id, poradoveCislo: zaznam.posta.poradoveCislo, vec: zaznam.posta.vec } : null,
+          odosielatel: zaznam.odosielatel,
+          adresati: zaznam.adresati,
+          prilohy: zaznam.prilohy.map(p => ({
+            id: p.id,
+            cislo: p.cislo,
+            forma: p.forma,
+            nazov: p.nazov,
+            originalName: p.originalName,
+            fileSize: p.fileSize,
+            fileHash: p.fileHash,
+            hasFile: !!p.storedName,
+          })),
+          spisy: zaznam.spisy.map(sz => ({
+            id: sz.spis.id,
+            cisloSpisu: sz.spis.cisloSpisu,
+            nazov: sz.spis.nazov,
+            status: sz.spis.status,
+          })),
+          createdAt: zaznam.createdAt.toISOString().split("T")[0],
+          updatedAt: zaznam.updatedAt.toISOString().split("T")[0],
+        }}
+        utvary={utvary.map(u => ({ id: u.id, nazov: u.nazov }))}
         canManage={canManage}
         isAdmin={isAdmin}
       />

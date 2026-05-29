@@ -102,7 +102,7 @@ export async function addZaznamToSpis(spisId: number, zaznamId: number): Promise
     return { error: "Nemáte oprávnenie na úpravu tohto spisu." }
   }
   if (spis.status === "UZATVORENY") return { error: "Uzatvorený spis nie je možné upravovať." }
-  if (zaznam.status === "VYRADENY") return { error: "Vyradený záznam nie je možné vložiť do spisu." }
+  if (zaznam.stav === "VYBAVENY") return { error: "Vybavený záznam nie je možné vložiť do spisu." }
 
   const exists = await prisma.spisZaznam.findUnique({
     where: { spisId_zaznamId: { spisId, zaznamId } },
@@ -156,7 +156,7 @@ export async function uzatvoritSpis(spisId: number): Promise<Result> {
 
   const spis = await prisma.spis.findUnique({
     where: { id: spisId },
-    include: { zaznamy: { include: { zaznam: { select: { status: true, cisloZaznamu: true } } } }, plan: true },
+    include: { zaznamy: { include: { zaznam: { select: { stav: true, cisloZaznamu: true } } } }, plan: true },
   })
   if (!spis) return { error: "Spis nenájdený." }
   if (!canManageSpis(session.user.roles as string[], spis, parseInt(session.user.id))) {
@@ -165,7 +165,7 @@ export async function uzatvoritSpis(spisId: number): Promise<Result> {
   if (spis.status === "UZATVORENY") return { error: "Spis je už uzatvorený." }
 
   const openZaznamy = spis.zaznamy.filter(
-    sz => sz.zaznam.status !== "UZAVRETY" && sz.zaznam.status !== "VYRADENY"
+    sz => sz.zaznam.stav !== "VYBAVENY"
   )
   if (openZaznamy.length > 0) {
     const nums = openZaznamy.map(sz => sz.zaznam.cisloZaznamu).join(", ")

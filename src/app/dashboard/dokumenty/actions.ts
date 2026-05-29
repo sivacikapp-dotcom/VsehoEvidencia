@@ -265,6 +265,288 @@ export async function deleteDocument(documentId: number) {
   return { success: true }
 }
 
+export async function createDocumentDraft(formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const user = await getUserDocContext(userId)
+
+  const sourceId = parseInt(formData.get("sourceDocumentId") as string)
+  const source = await prisma.document.findUnique({
+    where: { id: sourceId },
+    include: { gestors: true, accesses: true, attachments: { where: { isLatest: true }, include: { accesses: true } } },
+  })
+  if (!source) return { error: "Dokument neexistuje" }
+  if (!source.isLatest) return { error: "Návrh možno vytvoriť iba z aktuálnej verzie" }
+  if (source.status !== "PUBLISHED") return { error: "Návrh možno vytvoriť iba z publikovanej verzie" }
+
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === source.agendaId) ?? false
+  const isDocGestor = user?.documentGestors.some((g) => g.documentId === sourceId) ?? false
+  if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie vytvárať návrh verzie")
+
+  // Ensure no draft already exists in this chain
+  const rootId = source.parentId ?? source.id
+  const existingDraft = await prisma.document.findFirst({
+    where: { OR: [{ id: rootId }, { parentId: rootId }], status: "DRAFT" },
+  })
+  if (existingDraft) return { error: "Pre tento dokument už existuje návrh verzie" }
+
+  const znacka = (formData.get("znacka") as string)?.trim()
+  const nazov = (formData.get("nazov") as string)?.trim()
+  const datumRaw = formData.get("datumSchvalenia") as string
+  const confidentiality = formData.get("confidentiality") as string
+  const file = formData.get("priloha") as File | null
+  const keepPriloha = formData.get("keepPriloha") === "true"
+
+  if (!znacka) return { error: "Značka je povinná" }
+  if (!nazov) return { error: "Názov je povinný" }
+  if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+
+  const nextVersion = source.version + 1
+  const datumPrvehoSchvalenia = source.datumPrvehoSchvalenia ?? source.datumSchvalenia
+
+  let prilohaPath: string | null = keepPriloha ? source.prilohaPath : null
+  let prilohaName: string | null = keepPriloha ? source.prilohaName : null
+  let textContent: string | null = keepPriloha ? (source.textContent ?? null) : null
+
+  if (file && file.size > 0) {
+    const uploadDir = path.join(process.cwd(), "uploads", "docs")
+    await mkdir(uploadDir, { recursive: true })
+    const ext = path.extname(file.name)
+    const storedName = `${randomUUID()}${ext}`
+    const bytes = await file.arrayBuffer()
+    await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
+    prilohaPath = storedName
+    prilohaName = file.name
+    textContent = await extractDocText(storedName)
+  }
+
+  const newDoc = await prisma.$transaction(async (tx) => {
+    const doc = await tx.document.create({
+      data: {
+        znacka,
+        nazov,
+        datumSchvalenia: new Date(datumRaw),
+        datumPrvehoSchvalenia,
+        confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || source.confidentiality,
+        agendaId: source.agendaId,
+        prilohaPath,
+        prilohaName,
+        textContent,
+        version: nextVersion,
+        parentId: rootId,
+        isLatest: false,
+        status: "DRAFT",
+      },
+    })
+
+    if (source.gestors.length > 0) {
+      await tx.documentGestor.createMany({
+        data: source.gestors.map((g) => ({ userId: g.userId, documentId: doc.id })),
+      })
+    }
+    if (source.accesses.length > 0) {
+      await tx.documentAccess.createMany({
+        data: source.accesses.map((a) => ({ userId: a.userId, documentId: doc.id, grantedById: a.grantedById })),
+      })
+    }
+    for (const att of source.attachments) {
+      const newAtt = await tx.documentAttachment.create({
+        data: {
+          documentId: doc.id,
+          znacka: att.znacka,
+          nazov: att.nazov,
+          datumSchvalenia: att.datumSchvalenia,
+          confidentiality: att.confidentiality,
+          filePath: att.filePath,
+          fileName: att.fileName,
+          textContent: att.textContent,
+          version: 1,
+          parentId: null,
+          isLatest: true,
+          status: "PUBLISHED",
+        },
+      })
+      if (att.accesses.length > 0) {
+        await tx.documentAttachmentAccess.createMany({
+          data: att.accesses.map((a) => ({ userId: a.userId, attachmentId: newAtt.id, grantedById: a.grantedById })),
+        })
+      }
+    }
+    return doc
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_DRAFT", entityId: newDoc.id,
+    entityLabel: `${znacka} – ${nazov} (návrh v${nextVersion})`,
+    newData: { znacka, nazov, version: nextVersion, parentId: rootId, agendaId: source.agendaId, status: "DRAFT" },
+  })
+  revalidatePath(`/dashboard/dokumenty/${source.agendaId}`)
+  return { success: true, newDocumentId: newDoc.id }
+}
+
+export async function approveDocumentDraft(documentId: number) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const user = await getUserDocContext(userId)
+
+  const draft = await prisma.document.findUnique({ where: { id: documentId } })
+  if (!draft) return { error: "Dokument neexistuje" }
+  if (draft.status !== "DRAFT") return { error: "Dokument nie je v stave návrhu" }
+
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === draft.agendaId) ?? false
+  const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId) ?? false
+  if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie schvaľovať návrh")
+
+  const rootId = draft.parentId ?? draft.id
+  await prisma.$transaction(async (tx) => {
+    // Mark all existing PUBLISHED versions as not latest
+    await tx.document.updateMany({
+      where: { OR: [{ id: rootId }, { parentId: rootId }], status: "PUBLISHED", isLatest: true },
+      data: { isLatest: false },
+    })
+    // Approve the draft
+    await tx.document.update({
+      where: { id: documentId },
+      data: { isLatest: true, status: "PUBLISHED" },
+    })
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "DOCUMENT", entityId: documentId,
+    entityLabel: `${draft.znacka} – ${draft.nazov} (schválená v${draft.version})`,
+    newData: { status: "PUBLISHED", isLatest: true },
+  })
+  revalidatePath(`/dashboard/dokumenty/${draft.agendaId}`)
+  revalidatePath(`/dashboard/dokumenty/${draft.agendaId}/${documentId}`)
+  return { success: true }
+}
+
+export async function createAttachmentDraft(formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const sourceId = parseInt(formData.get("sourceAttachmentId") as string)
+  const source = await prisma.documentAttachment.findUnique({
+    where: { id: sourceId },
+    include: { accesses: true },
+  })
+  if (!source) return { error: "Príloha neexistuje" }
+  if (!source.isLatest) return { error: "Návrh možno vytvoriť iba z aktuálnej verzie prílohy" }
+  if (source.status !== "PUBLISHED") return { error: "Návrh možno vytvoriť iba z publikovanej verzie prílohy" }
+
+  const doc = await canEditDoc(userId, source.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie vytvárať návrh prílohy")
+
+  // Ensure no draft already exists in this attachment chain
+  const rootId = source.parentId ?? source.id
+  const existingDraft = await prisma.documentAttachment.findFirst({
+    where: { OR: [{ id: rootId }, { parentId: rootId }], status: "DRAFT" },
+  })
+  if (existingDraft) return { error: "Pre túto prílohu už existuje návrh" }
+
+  const znacka = (formData.get("znacka") as string)?.trim()
+  const nazov = (formData.get("nazov") as string)?.trim()
+  const datumRaw = formData.get("datumSchvalenia") as string
+  const confidentiality = formData.get("confidentiality") as string
+  const file = formData.get("file") as File | null
+  const keepFile = formData.get("keepFile") === "true"
+
+  if (!znacka) return { error: "Značka je povinná" }
+  if (!nazov) return { error: "Názov je povinný" }
+  if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+
+  const nextVersion = source.version + 1
+  const datumPrvehoSchvalenia = source.datumPrvehoSchvalenia ?? source.datumSchvalenia
+
+  let filePath: string | null = keepFile ? source.filePath : null
+  let fileName: string | null = keepFile ? source.fileName : null
+  let textContent: string | null = keepFile ? (source.textContent ?? null) : null
+
+  if (file && file.size > 0) {
+    const uploadDir = path.join(process.cwd(), "uploads", "docs")
+    await mkdir(uploadDir, { recursive: true })
+    const ext = path.extname(file.name)
+    const storedName = `${randomUUID()}${ext}`
+    const bytes = await file.arrayBuffer()
+    await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
+    filePath = storedName
+    fileName = file.name
+    textContent = await extractDocText(storedName)
+  }
+
+  const newAtt = await prisma.$transaction(async (tx) => {
+    const att = await tx.documentAttachment.create({
+      data: {
+        documentId: source.documentId,
+        znacka,
+        nazov,
+        datumSchvalenia: new Date(datumRaw),
+        datumPrvehoSchvalenia,
+        confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || source.confidentiality,
+        filePath,
+        fileName,
+        textContent,
+        version: nextVersion,
+        parentId: rootId,
+        isLatest: false,
+        status: "DRAFT",
+      },
+    })
+    if (source.accesses.length > 0) {
+      await tx.documentAttachmentAccess.createMany({
+        data: source.accesses.map((a) => ({ userId: a.userId, attachmentId: att.id, grantedById: a.grantedById })),
+      })
+    }
+    return att
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_ATTACHMENT_DRAFT", entityId: source.documentId,
+    entityLabel: `${znacka} (návrh v${nextVersion})`,
+    newData: { znacka, nazov, version: nextVersion, documentId: source.documentId, status: "DRAFT" },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${source.documentId}`)
+  return { success: true, newAttachmentId: newAtt.id }
+}
+
+export async function approveAttachmentDraft(attachmentId: number) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const draft = await prisma.documentAttachment.findUnique({ where: { id: attachmentId } })
+  if (!draft) return { error: "Príloha neexistuje" }
+  if (draft.status !== "DRAFT") return { error: "Príloha nie je v stave návrhu" }
+
+  const doc = await canEditDoc(userId, draft.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie schvaľovať návrh prílohy")
+
+  const rootId = draft.parentId ?? draft.id
+  await prisma.$transaction(async (tx) => {
+    await tx.documentAttachment.updateMany({
+      where: { OR: [{ id: rootId }, { parentId: rootId }], status: "PUBLISHED", isLatest: true },
+      data: { isLatest: false },
+    })
+    await tx.documentAttachment.update({
+      where: { id: attachmentId },
+      data: { isLatest: true, status: "PUBLISHED" },
+    })
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "DOCUMENT_ATTACHMENT", entityId: attachmentId,
+    entityLabel: `${draft.znacka} (schválená v${draft.version})`,
+    newData: { status: "PUBLISHED", isLatest: true },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${draft.documentId}`)
+  return { success: true }
+}
+
 export async function createDocumentVersion(formData: FormData) {
   const session = await getSession({ mutation: true })
   const userId = parseInt(session.user.id)
@@ -778,6 +1060,157 @@ export async function deleteDocumentAttachment(attachmentId: number) {
   return { success: true }
 }
 
+export async function addDocumentAuxFile(documentId: number, formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const doc = await canEditDoc(userId, documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie pridávať pomocné súbory")
+
+  const file = formData.get("file") as File | null
+  if (!file || file.size === 0) return { error: "Súbor je povinný" }
+
+  const uploadDir = path.join(process.cwd(), "uploads", "docs")
+  await mkdir(uploadDir, { recursive: true })
+  const ext = path.extname(file.name)
+  const storedName = `${randomUUID()}${ext}`
+  const bytes = await file.arrayBuffer()
+  await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
+
+  await prisma.documentAuxFile.create({
+    data: { documentId, storedName, originalName: file.name },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
+  return { success: true }
+}
+
+export async function deleteDocumentAuxFile(fileId: number) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const auxFile = await prisma.documentAuxFile.findUnique({ where: { id: fileId } })
+  if (!auxFile) return { error: "Súbor neexistuje" }
+
+  const doc = await canEditDoc(userId, auxFile.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie mazať pomocné súbory")
+
+  const fullPath = path.join(process.cwd(), "uploads", "docs", auxFile.storedName)
+  await unlink(fullPath).catch(() => {})
+  await prisma.documentAuxFile.delete({ where: { id: fileId } })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${auxFile.documentId}`)
+  return { success: true }
+}
+
+export async function addAttachmentAuxFile(attachmentId: number, formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const attachment = await prisma.documentAttachment.findUnique({ where: { id: attachmentId } })
+  if (!attachment) return { error: "Príloha neexistuje" }
+
+  const doc = await canEditDoc(userId, attachment.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie pridávať pomocné súbory k prílohe")
+
+  const file = formData.get("file") as File | null
+  if (!file || file.size === 0) return { error: "Súbor je povinný" }
+
+  const uploadDir = path.join(process.cwd(), "uploads", "docs")
+  await mkdir(uploadDir, { recursive: true })
+  const ext = path.extname(file.name)
+  const storedName = `${randomUUID()}${ext}`
+  const bytes = await file.arrayBuffer()
+  await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
+
+  await prisma.documentAttachmentAuxFile.create({
+    data: { attachmentId, storedName, originalName: file.name },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${attachment.documentId}`)
+  return { success: true }
+}
+
+export async function deleteAttachmentAuxFile(fileId: number) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const auxFile = await prisma.documentAttachmentAuxFile.findUnique({ where: { id: fileId } })
+  if (!auxFile) return { error: "Súbor neexistuje" }
+
+  const attachment = await prisma.documentAttachment.findUnique({ where: { id: auxFile.attachmentId } })
+  if (!attachment) return { error: "Príloha neexistuje" }
+
+  const doc = await canEditDoc(userId, attachment.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie mazať pomocné súbory prílohy")
+
+  const fullPath = path.join(process.cwd(), "uploads", "docs", auxFile.storedName)
+  await unlink(fullPath).catch(() => {})
+  await prisma.documentAttachmentAuxFile.delete({ where: { id: fileId } })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${attachment.documentId}`)
+  return { success: true }
+}
+
+async function canManageDocNotes(userId: number, documentId: number) {
+  const [user, doc] = await Promise.all([
+    getUserDocContext(userId),
+    prisma.document.findUnique({ where: { id: documentId } }),
+  ])
+  if (!doc) return null
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === doc.agendaId) ?? false
+  const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId) ?? false
+  if (!isAdmin && !isAgendaGestor && !isDocGestor) return null
+  return doc
+}
+
+export async function createDocumentNote(documentId: number, content: string) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const doc = await canManageDocNotes(userId, documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie pridávať poznámky")
+
+  const note = await prisma.documentNote.create({
+    data: {
+      documentId,
+      content: content.trim(),
+      createdById: userId,
+      createdByName: session.user.name ?? "",
+    },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
+  return { success: true, noteId: note.id }
+}
+
+export async function updateDocumentNote(noteId: number, content: string) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const note = await prisma.documentNote.findUnique({ where: { id: noteId } })
+  if (!note) return { error: "Poznámka neexistuje" }
+
+  const doc = await canManageDocNotes(userId, note.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie upravovať poznámky")
+
+  await prisma.documentNote.update({
+    where: { id: noteId },
+    data: { content: content.trim() },
+  })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${note.documentId}`)
+  return { success: true }
+}
+
+export async function deleteDocumentNote(noteId: number) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+
+  const note = await prisma.documentNote.findUnique({ where: { id: noteId } })
+  if (!note) return { error: "Poznámka neexistuje" }
+
+  const doc = await canManageDocNotes(userId, note.documentId)
+  if (!doc) throw new Error("Nemáte oprávnenie mazať poznámky")
+
+  await prisma.documentNote.delete({ where: { id: noteId } })
+  revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${note.documentId}`)
+  return { success: true }
+}
+
 export type DocSearchResult = {
   type: "document" | "attachment"
   documentId: number
@@ -860,7 +1293,7 @@ export async function searchDocuments(
     }
 
     const docs = await prisma.document.findMany({
-      where: { isLatest: true, OR: orClauses, ...(opts.agendaId ? { agendaId: opts.agendaId } : {}) },
+      where: { isLatest: true, status: "PUBLISHED", OR: orClauses, ...(opts.agendaId ? { agendaId: opts.agendaId } : {}) },
       include: { agenda: { select: { id: true, name: true } } },
       orderBy: { updatedAt: "desc" },
       take: 100,
@@ -907,6 +1340,7 @@ export async function searchDocuments(
     const attachments = await prisma.documentAttachment.findMany({
       where: {
         isLatest: true,
+        status: "PUBLISHED",
         OR: orClauses,
         ...(opts.agendaId ? { document: { agendaId: opts.agendaId } } : {}),
       },

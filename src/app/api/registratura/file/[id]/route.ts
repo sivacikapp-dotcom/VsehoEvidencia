@@ -28,41 +28,42 @@ function canAccess(roles: string[], zaznam: { spracovatelId: number }, userId: n
   return roles.includes("SPRACOVATEL_REGISTRATURY") && zaznam.spracovatelId === userId
 }
 
+// [id] = ZaznamPriloha.id
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const zaznamId = parseInt(id)
-  if (isNaN(zaznamId)) return new NextResponse("Invalid ID", { status: 400 })
+  const priolohaId = parseInt(id)
+  if (isNaN(priolohaId)) return new NextResponse("Invalid ID", { status: 400 })
 
   const session = await getServerSession(authOptions)
   if (!session) return new NextResponse("Unauthorized", { status: 401 })
 
-  const zaznam = await prisma.regZaznam.findUnique({ where: { id: zaznamId } })
-  if (!zaznam || !zaznam.storedName || !zaznam.originalName) return new NextResponse("Not found", { status: 404 })
+  const priloha = await prisma.zaznamPriloha.findUnique({
+    where: { id: priolohaId },
+    include: { zaznam: true },
+  })
+  if (!priloha || !priloha.storedName || !priloha.originalName) return new NextResponse("Not found", { status: 404 })
 
   const roles = session.user.roles as string[]
   const userId = parseInt(session.user.id)
-  if (!canAccess(roles, zaznam, userId)) return new NextResponse("Forbidden", { status: 403 })
+  if (!canAccess(roles, priloha.zaznam, userId)) return new NextResponse("Forbidden", { status: 403 })
 
-  const ext = zaznam.storedName.split(".").pop()?.toLowerCase() ?? ""
-  const uploadsRoot = join(process.cwd(), "uploads", "registratura")
-  const filePath = join(uploadsRoot, zaznam.storedName)
+  const ext = priloha.storedName.split(".").pop()?.toLowerCase() ?? ""
+  const filePath = join(process.cwd(), "uploads", "registratura", priloha.storedName)
 
   try {
     const buffer = await readFile(filePath)
 
-    // Integrity check — compare stored hash with current file hash
-    if (zaznam.fileHash) {
+    if (priloha.fileHash) {
       const currentHash = createHash("sha256").update(buffer).digest("hex")
-      if (currentHash !== zaznam.fileHash) {
-        console.error(`[RegFile] Hash mismatch for zaznam ${zaznamId}: stored=${zaznam.fileHash} current=${currentHash}`)
+      if (currentHash !== priloha.fileHash) {
         await createAuditLog({
           userId, userEmail: session.user.email, userName: session.user.name,
-          action: "UPDATE", entityType: "REG_ZAZNAM_INTEGRITY_FAIL", entityId: zaznamId,
-          entityLabel: zaznam.cisloZaznamu,
-          newData: { storedHash: zaznam.fileHash, currentHash },
+          action: "UPDATE", entityType: "REG_PRILOHA_INTEGRITY_FAIL", entityId: priolohaId,
+          entityLabel: priloha.zaznam.cisloZaznamu,
+          newData: { storedHash: priloha.fileHash, currentHash },
         })
         return new NextResponse(
           JSON.stringify({ error: "INTEGRITA SÚBORU NARUŠENÁ: hash sa nezhoduje so zaznamenanou hodnotou." }),
@@ -73,20 +74,20 @@ export async function GET(
 
     await createAuditLog({
       userId, userEmail: session.user.email, userName: session.user.name,
-      action: "UPDATE", entityType: "REG_ZAZNAM_DOWNLOAD", entityId: zaznamId,
-      entityLabel: zaznam.cisloZaznamu,
-      newData: { fileName: zaznam.originalName },
+      action: "UPDATE", entityType: "REG_PRILOHA_DOWNLOAD", entityId: priolohaId,
+      entityLabel: `${priloha.zaznam.cisloZaznamu} / ${priloha.nazov}`,
+      newData: { fileName: priloha.originalName },
     })
 
     const mimeType = MIME_MAP[ext] ?? "application/octet-stream"
-    const safeName = zaznam.originalName.replace(/[^\w.\-\s]/g, "_")
+    const safeName = priloha.originalName.replace(/[^\w.\-\s]/g, "_")
 
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": mimeType,
         "Content-Disposition": `attachment; filename="${encodeURIComponent(safeName)}"`,
         "X-Content-Type-Options": "nosniff",
-        "X-File-Hash": zaznam.fileHash ?? "",
+        "X-File-Hash": priloha.fileHash ?? "",
       },
     })
   } catch {

@@ -10,22 +10,35 @@ export default async function NastaveniaRegistraturyPage() {
 
   if (!session.user.roles.includes("SPRAVCA_REGISTRATURY")) redirect("/dashboard")
 
-  const raw = await prisma.user.findMany({
-    select: { id: true, firstName: true, lastName: true, roles: true },
-    orderBy: { lastName: "asc" },
-  })
+  const [rawUsers, rawPlan] = await Promise.all([
+    prisma.user.findMany({
+      select: { id: true, firstName: true, lastName: true, roles: true },
+      orderBy: { lastName: "asc" },
+    }),
+    prisma.registraturnyPlan.findMany({
+      orderBy: { znacka: "asc" },
+    }),
+  ])
 
-  const users = raw.map(u => ({
+  const users = rawUsers.map(u => ({
     id: u.id,
     firstName: u.firstName,
     lastName: u.lastName,
-    hasPodatelna:  u.roles.includes("PRACOVNIK_PODATELNE"),
+    hasPodatelna:   u.roles.includes("PRACOVNIK_PODATELNE"),
     hasSpracovatel: u.roles.includes("SPRACOVATEL_REGISTRATURY"),
+  }))
+
+  const plan = rawPlan.map(p => ({
+    id: p.id,
+    znacka: p.znacka,
+    nazov: p.nazov,
+    lehota: p.lehota,
+    maArchivnu: p.maArchivnu,
   }))
 
   return (
     <div className="flex-1 overflow-auto p-8">
-      <NastaveniaRegistraturyClient users={users} />
+      <NastaveniaRegistraturyClient users={users} plan={plan} />
     </div>
   )
 }

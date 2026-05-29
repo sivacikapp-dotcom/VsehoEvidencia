@@ -176,6 +176,11 @@ enum Confidentiality {
   DOVERNI
 }
 
+enum DocumentStatus {
+  DRAFT
+  PUBLISHED
+}
+
 model Asset {
   id                Int              @id @default(autoincrement())
   type              AssetType
@@ -364,6 +369,7 @@ model Document {
   parent                Document?       @relation("DocumentVersions", fields: [parentId], references: [id], onDelete: Cascade)
   versions              Document[]      @relation("DocumentVersions")
   isLatest              Boolean         @default(true)
+  status                DocumentStatus  @default(PUBLISHED)
   prilohaPath           String?
   prilohaName           String?
   textContent           String?
@@ -373,6 +379,8 @@ model Document {
   gestors               DocumentGestor[]
   accesses              DocumentAccess[]
   attachments           DocumentAttachment[]
+  notes                 DocumentNote[]
+  auxFiles              DocumentAuxFile[]
   notifications         Notification[]
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
@@ -411,12 +419,14 @@ model DocumentAttachment {
   parent                DocumentAttachment? @relation("AttachmentVersions", fields: [parentId], references: [id], onDelete: Cascade)
   versions              DocumentAttachment[] @relation("AttachmentVersions")
   isLatest              Boolean         @default(true)
+  status                DocumentStatus  @default(PUBLISHED)
   confidentiality       Confidentiality
   filePath              String?
   fileName              String?
   textContent           String?
   createdAt             DateTime        @default(now())
   accesses              DocumentAttachmentAccess[]
+  auxFiles              DocumentAttachmentAuxFile[]
 }
 
 model DocumentAttachmentAccess {
@@ -429,6 +439,35 @@ model DocumentAttachmentAccess {
   grantedById  Int?
 
   @@unique([userId, attachmentId])
+}
+
+model DocumentAuxFile {
+  id           Int      @id @default(autoincrement())
+  documentId   Int
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  storedName   String
+  originalName String
+  createdAt    DateTime @default(now())
+}
+
+model DocumentAttachmentAuxFile {
+  id           Int                @id @default(autoincrement())
+  attachmentId Int
+  attachment   DocumentAttachment @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  storedName   String
+  originalName String
+  createdAt    DateTime @default(now())
+}
+
+model DocumentNote {
+  id            Int      @id @default(autoincrement())
+  documentId    Int
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  content       String   @db.VarChar(4000)
+  createdById   Int
+  createdByName String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 model DocumentAccess {
@@ -613,6 +652,7 @@ model Utvar {
   id        Int         @id @default(autoincrement())
   nazov     String      @unique
   users     UserUtvar[]
+  zaznamy   RegZaznam[]
   createdAt DateTime    @default(now())
 }
 
@@ -649,11 +689,29 @@ enum RegZaznamType {
   NEELEKTRONICKY
 }
 
-enum RegZaznamStatus {
-  ROZPRACOVANY
-  REGISTROVANY
-  UZAVRETY
-  VYRADENY
+enum ZaznamKategoria {
+  PRIJATY
+  VYTVORENY
+}
+
+enum ZaznamStav {
+  PRIDELENY   // For PRIJATY: "Pridelený"
+  NOVY        // For VYTVORENY: "Vytvorený"
+  V_SPISE     // Both: "V spise"
+  VYBAVENY    // Both: "Vybavený"
+}
+
+enum SposobVybavenia {
+  VZAL_NA_VEDOMIE  // PRIJATY: "Vzal na vedomie"
+  ODPOVEDU         // PRIJATY: "Odpoveďou"
+  ZALOZENY         // VYTVORENY: "Založený"
+  ODOSLANY         // VYTVORENY: "Odoslaný"
+}
+
+enum ZaznamDovernost {
+  VEREJNE
+  INTERNE
+  DOVERNE
 }
 
 enum SpisStatus {
@@ -674,6 +732,7 @@ model RegistraturnyPlan {
   maArchivnu Boolean     @default(false)
   zaznamy    RegZaznam[]
   spisy      Spis[]
+
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 }
@@ -713,32 +772,82 @@ model PostaAttachment {
 }
 
 model RegZaznam {
-  id                 Int               @id @default(autoincrement())
-  cisloZaznamu       String            @unique
-  postaId            Int?              @unique
-  posta              Posta?            @relation("PostaZaznam", fields: [postaId], references: [id])
-  planId             Int
-  plan               RegistraturnyPlan @relation(fields: [planId], references: [id])
-  spracovatelId      Int
-  spracovatel        User              @relation("ZaznamSpracovatel", fields: [spracovatelId], references: [id])
-  typZaznamu         RegZaznamType
-  umiestnenieFyzicke String?
-  originalName       String?
-  storedName         String?
-  mimeType           String?
-  fileSize           Int?
-  fileHash           String?
-  status             RegZaznamStatus   @default(ROZPRACOVANY)
-  spisy              SpisZaznam[]
-  createdById        Int
-  createdBy          User              @relation("ZaznamCreatedBy", fields: [createdById], references: [id])
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
+  id            Int               @id @default(autoincrement())
+  cisloZaznamu  String            @unique
+  kategoria     ZaznamKategoria   @default(PRIJATY)
+  rok           Int               @default(2026)
+  postaId       Int?              @unique
+  posta         Posta?            @relation("PostaZaznam", fields: [postaId], references: [id])
+  planId        Int?
+  plan          RegistraturnyPlan? @relation(fields: [planId], references: [id])
+  spracovatelId Int
+  spracovatel   User              @relation("ZaznamSpracovatel", fields: [spracovatelId], references: [id])
+  utvarId       Int?
+  utvar         Utvar?            @relation(fields: [utvarId], references: [id])
+  formaZaznamu  RegZaznamType     @default(ELEKTRONICKY)
+  vec           String?
+  popis         String?
+  stav          ZaznamStav        @default(PRIDELENY)
+  sposobVybavenia SposobVybavenia?
+  dovernost     ZaznamDovernost   @default(INTERNE)
+  odosielatel   ZaznamOdosielatel?
+  adresati      ZaznamAdresat[]
+  prilohy       ZaznamPriloha[]
+  spisy         SpisZaznam[]
+  createdById   Int
+  createdBy     User              @relation("ZaznamCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  @@index([planId])
   @@index([spracovatelId])
-  @@index([status])
+  @@index([stav])
   @@index([createdAt(sort: Desc)])
+}
+
+model ZaznamOdosielatel {
+  id            Int       @id @default(autoincrement())
+  zaznamId      Int       @unique
+  zaznam        RegZaznam @relation(fields: [zaznamId], references: [id], onDelete: Cascade)
+  meno          String?
+  priezvisko    String?
+  nazov         String?
+  oddelenie     String?
+  ulica         String?
+  mesto         String?
+  psc           String?
+  identifikator String?
+}
+
+model ZaznamAdresat {
+  id            Int       @id @default(autoincrement())
+  zaznamId      Int
+  zaznam        RegZaznam @relation(fields: [zaznamId], references: [id], onDelete: Cascade)
+  poradie       Int       @default(0)
+  meno          String?
+  priezvisko    String?
+  nazov         String?
+  oddelenie     String?
+  ulica         String?
+  mesto         String?
+  psc           String?
+  identifikator String?
+}
+
+model ZaznamPriloha {
+  id           Int           @id @default(autoincrement())
+  zaznamId     Int
+  zaznam       RegZaznam     @relation(fields: [zaznamId], references: [id], onDelete: Cascade)
+  cislo        Int
+  forma        RegZaznamType
+  nazov        String
+  storedName   String?
+  originalName String?
+  mimeType     String?
+  fileSize     Int?
+  fileHash     String?
+  createdAt    DateTime      @default(now())
+
+  @@unique([zaznamId, cislo])
 }
 
 model Spis {

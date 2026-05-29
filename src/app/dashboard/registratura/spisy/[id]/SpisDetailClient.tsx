@@ -3,15 +3,16 @@
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, Pencil, X, Check, Trash2, Plus, FolderOpen, Lock, FileText, ExternalLink, AlertTriangle } from "lucide-react"
-import { regZaznamStatusLabels, regZaznamStatusColors, regZaznamTypeLabels, spisStatusLabels, spisStatusColors } from "@/lib/regLabels"
-import type { RegZaznamType, RegZaznamStatus, SpisStatus } from "@/generated/prisma/enums"
+import { regZaznamTypeLabels, zaznamStavLabels, zaznamStavColors, zaznamKategoriaLabels, spisStatusLabels, spisStatusColors } from "@/lib/regLabels"
+import type { RegZaznamType, ZaznamStav, ZaznamKategoria, SpisStatus } from "@/generated/prisma/enums"
 import { updateSpis, addZaznamToSpis, removeZaznamFromSpis, uzatvoritSpis } from "../actions"
 
 type ZaznamInSpis = {
   id: number
   cisloZaznamu: string
-  typZaznamu: RegZaznamType
-  status: RegZaznamStatus
+  formaZaznamu: RegZaznamType
+  stav: ZaznamStav
+  kategoria: ZaznamKategoria
   planZnacka: string
   planNazov: string
   addedAt: string
@@ -20,8 +21,9 @@ type ZaznamInSpis = {
 type AvailableZaznam = {
   id: number
   cisloZaznamu: string
-  typZaznamu: RegZaznamType
-  status: RegZaznamStatus
+  formaZaznamu: RegZaznamType
+  stav: ZaznamStav
+  kategoria: ZaznamKategoria
   planZnacka: string
   planNazov: string
 }
@@ -237,10 +239,12 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
                     <p className="text-gray-900 dark:text-white font-medium">{z.planZnacka}</p>
                     <p className="text-xs text-gray-400 truncate max-w-[150px]">{z.planNazov}</p>
                   </td>
-                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-xs">{regZaznamTypeLabels[z.typZaznamu]}</td>
+                  <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-xs">
+                    {zaznamKategoriaLabels[z.kategoria]} · {regZaznamTypeLabels[z.formaZaznamu]}
+                  </td>
                   <td className="px-4 py-3">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${regZaznamStatusColors[z.status]}`}>
-                      {regZaznamStatusLabels[z.status]}
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamStavColors[z.stav]}`}>
+                      {zaznamStavLabels[z.stav]}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{z.addedAt}</td>
@@ -296,8 +300,8 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
                     <p className="text-xs text-gray-500 dark:text-gray-400">{z.planZnacka} – {z.planNazov}</p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${regZaznamStatusColors[z.status]}`}>
-                      {regZaznamStatusLabels[z.status]}
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${zaznamStavColors[z.stav]}`}>
+                      {zaznamStavLabels[z.stav]}
                     </span>
                     <Plus size={14} className="text-blue-500" />
                   </div>

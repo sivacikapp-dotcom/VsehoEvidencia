@@ -132,8 +132,10 @@ export async function prekloritDoRegistratury(
           postaId,
           planId,
           spracovatelId,
-          typZaznamu,
-          umiestnenieFyzicke: umiestnenie.trim() || null,
+          formaZaznamu: typZaznamu,
+          rok: year,
+          kategoria: "PRIJATY",
+          stav: "PRIDELENY",
           createdById: parseInt(session.user.id),
         },
       })

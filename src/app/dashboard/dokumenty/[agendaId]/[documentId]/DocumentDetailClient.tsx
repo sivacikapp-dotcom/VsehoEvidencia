@@ -6,19 +6,25 @@ import Link from "next/link"
 import {
   ArrowLeft, ChevronRight, Pencil, X, Loader2, Paperclip,
   Download, Lock, Eye, EyeOff, Users, UserPlus, UserMinus, Shield,
-  Plus, Trash2, History, GitBranch, AlertTriangle,
+  Plus, Trash2, History, GitBranch, AlertTriangle, MessageSquare, Send, ChevronDown, ChevronUp,
 } from "lucide-react"
 import {
   updateDocument, grantDocumentAccess, revokeDocumentAccess, setDocumentGestor,
   createDocumentAttachment, updateDocumentAttachment, deleteDocumentAttachment,
   grantAttachmentAccess, revokeAttachmentAccess,
-  createDocumentVersion, createAttachmentVersion,
+  createDocumentDraft, approveDocumentDraft,
+  createAttachmentDraft, approveAttachmentDraft,
+  createDocumentNote, updateDocumentNote, deleteDocumentNote,
+  addDocumentAuxFile, deleteDocumentAuxFile,
+  addAttachmentAuxFile, deleteAttachmentAuxFile,
 } from "../../actions"
 import { fmtDate } from "@/lib/formatDate"
 
 type Confidentiality = "VEREJNY" | "INTERNI" | "DOVERNI"
 interface DocUser { id: number; name: string; email: string }
 interface DocUserWithAccess extends DocUser { hasAccess: boolean }
+interface DocNote { id: number; content: string; createdByName: string; createdAt: string; updatedAt: string }
+interface DocAuxFile { id: number; storedName: string; originalName: string }
 
 interface AttachmentData {
   id: number
@@ -29,12 +35,14 @@ interface AttachmentData {
   version: number
   parentId: number | null
   isLatest: boolean
+  status: string
   confidentiality: Confidentiality
   filePath: string | null
   fileName: string | null
   canDownload: boolean
   accessUserIds: number[]
   accessUsers: { id: number; name: string; email: string }[]
+  auxFiles: DocAuxFile[]
 }
 
 interface VersionHistoryItem {
@@ -44,6 +52,7 @@ interface VersionHistoryItem {
   nazov: string
   datumSchvalenia: string
   isLatest: boolean
+  status: string
 }
 
 interface DocumentData {
@@ -59,6 +68,8 @@ interface DocumentData {
   agendaName: string
   version: number
   isLatest: boolean
+  status: string
+  auxFiles: DocAuxFile[]
   gestors: { id: number; name: string }[]
   accesses: { id: number; name: string; email: string }[]
   attachments: AttachmentData[]
@@ -74,8 +85,14 @@ interface Props {
   canManageGestors: boolean
   isAdmin: boolean
   isAppAdmin?: boolean
+  hasDraft: boolean
+  draftDocId: number | null
   allUsers: DocUserWithAccess[]
   allUsersForAttachment: DocUser[]
+  gestorUsers: DocUser[]
+  notes: DocNote[]
+  canManageNotes: boolean
+  canSeeAuxFiles: boolean
   nextZnacka: string
 }
 
@@ -100,9 +117,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-// ─── Attachment Modal (create / edit / new version) ───────────────────────────
+// ─── Attachment Modal (create / edit / draft) ─────────────────────────────────
 interface AttachmentModalProps {
-  mode: "create" | "edit" | "newVersion"
+  mode: "create" | "edit" | "draft"
   documentId: number
   defaultZnacka: string
   defaultConfidentiality: Confidentiality
@@ -116,7 +133,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
   const [znacka, setZnacka] = useState(existing?.znacka ?? defaultZnacka)
   const [nazov, setNazov] = useState(existing?.nazov ?? "")
   const [datumSchvalenia, setDatumSchvalenia] = useState(
-    mode === "newVersion" ? today : (existing?.datumSchvalenia ?? today)
+    mode === "draft" ? today : (existing?.datumSchvalenia ?? today)
   )
   const [confidentiality, setConfidentiality] = useState<Confidentiality>(
     existing?.confidentiality ?? defaultConfidentiality
@@ -127,7 +144,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
   const [fileName, setFileName] = useState<string | null>(null)
   const [removeFile, setRemoveFile] = useState(false)
 
-  const title = mode === "create" ? "Nová príloha" : mode === "edit" ? "Editovať prílohu" : `Nová verzia prílohy (v${(existing?.version ?? 1) + 1})`
+  const title = mode === "create" ? "Nová príloha" : mode === "edit" ? "Editovať prílohu" : `Návrh novej verzie prílohy (v_rev${(existing?.version ?? 1) + 1})`
 
   async function handleSubmit() {
     setPending(true); setError("")
@@ -147,11 +164,11 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
       if (fileRef.current?.files?.[0]) fd.set("file", fileRef.current.files[0])
       res = await updateDocumentAttachment(fd)
     } else {
-      // newVersion
+      // draft
       fd.set("sourceAttachmentId", String(existing!.id))
       fd.set("keepFile", (!removeFile && !fileRef.current?.files?.[0]) ? "true" : "false")
       if (fileRef.current?.files?.[0]) fd.set("file", fileRef.current.files[0])
-      res = await createAttachmentVersion(fd)
+      res = await createAttachmentDraft(fd)
     }
     setPending(false)
     if (res?.error) { setError(res.error); return }
@@ -198,7 +215,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
               <div className="space-y-1">
                 {mode !== "create" && hasExistingFile && removeFile && (
                   <p className="text-xs text-orange-600 dark:text-orange-400">
-                    Súbor bude {mode === "newVersion" ? "nahradený novým alebo ponechaný bez súboru" : "odstránený"}.{" "}
+                    Súbor bude {mode === "draft" ? "nahradený novým alebo ponechaný bez súboru" : "odstránený"}.{" "}
                     <button onClick={() => setRemoveFile(false)} className="underline">Zrušiť</button>
                   </p>
                 )}
@@ -215,7 +232,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
                 <Paperclip size={14} className="text-gray-400 shrink-0" />
                 <span className="text-sm text-gray-700 dark:text-gray-300 truncate flex-1">{existing!.fileName}</span>
                 <button onClick={() => setRemoveFile(true)} className="text-xs text-red-500 hover:text-red-700 shrink-0">
-                  {mode === "newVersion" ? "Nahradiť" : "Odstrániť"}
+                  {mode === "draft" ? "Nahradiť" : "Odstrániť"}
                 </button>
               </div>
             )}
@@ -226,7 +243,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Zrušiť</button>
           <button onClick={handleSubmit} disabled={pending} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
             {pending && <Loader2 size={14} className="animate-spin" />}
-            {mode === "create" ? "Pridať" : mode === "edit" ? "Uložiť" : "Vytvoriť verziu"}
+            {mode === "create" ? "Pridať" : mode === "edit" ? "Uložiť" : "Vytvoriť návrh"}
           </button>
         </div>
       </div>
@@ -234,15 +251,16 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
   )
 }
 
-// ─── New Document Version Modal ───────────────────────────────────────────────
-interface NewDocVersionModalProps {
+// ─── New Document Draft Modal ─────────────────────────────────────────────────
+interface NewDocDraftModalProps {
   doc: DocumentData
   nextZnacka: string
+  nextVersion: number
   onClose: () => void
   onCreated: (newId: number) => void
 }
 
-function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersionModalProps) {
+function NewDocDraftModal({ doc, nextZnacka, nextVersion, onClose, onCreated }: NewDocDraftModalProps) {
   const today = new Date().toISOString().split("T")[0]
   const [znacka, setZnacka] = useState(nextZnacka)
   const [nazov, setNazov] = useState(doc.nazov)
@@ -264,7 +282,7 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
     fd.set("confidentiality", confidentiality)
     fd.set("keepPriloha", keepPriloha ? "true" : "false")
     if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
-    const res = await createDocumentVersion(fd)
+    const res = await createDocumentDraft(fd)
     setPending(false)
     if (res?.error) { setError(res.error); return }
     if (res?.newDocumentId) onCreated(res.newDocumentId)
@@ -276,8 +294,8 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
       <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg my-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Nová verzia dokumentu</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Archivovaná verzia zostane v histórii</p>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Návrh novej verzie</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Vytvorí sa verzia <span className="font-mono font-semibold text-amber-600 dark:text-amber-400">v_rev{nextVersion}</span> viditeľná len gestorovi</p>
           </div>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"><X size={18} /></button>
         </div>
@@ -291,7 +309,7 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
             <input value={nazov} onChange={(e) => setNazov(e.target.value)} className={inputCls} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum schválenia tejto verzie <span className="text-red-500">*</span></label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Plánovaný dátum schválenia <span className="text-red-500">*</span></label>
             <input type="date" value={datumSchvalenia} onChange={(e) => setDatumSchvalenia(e.target.value)} className={inputCls} />
           </div>
           <div>
@@ -303,7 +321,7 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Príloha dokumentu</label>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor dokumentu</label>
             {doc.prilohaName && keepPriloha ? (
               <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                 <Paperclip size={14} className="text-gray-400 shrink-0" />
@@ -320,7 +338,7 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
                 />
                 {fileName && <p className="text-xs text-gray-500">{fileName}</p>}
                 {doc.prilohaName && !keepPriloha && (
-                  <button onClick={() => setKeepPriloha(true)} className="text-xs text-blue-500 underline">Ponechať pôvodnú prílohu</button>
+                  <button onClick={() => setKeepPriloha(true)} className="text-xs text-blue-500 underline">Ponechať pôvodný súbor</button>
                 )}
               </div>
             )}
@@ -329,9 +347,9 @@ function NewDocVersionModal({ doc, nextZnacka, onClose, onCreated }: NewDocVersi
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Zrušiť</button>
-          <button onClick={handleSubmit} disabled={pending} className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
+          <button onClick={handleSubmit} disabled={pending} className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
             {pending && <Loader2 size={14} className="animate-spin" />}
-            Vytvoriť verziu
+            Vytvoriť návrh
           </button>
         </div>
       </div>
@@ -349,8 +367,14 @@ export default function DocumentDetailClient({
   canManageAccess,
   canManageGestors,
   isAppAdmin = false,
+  hasDraft,
+  draftDocId,
   allUsers,
   allUsersForAttachment,
+  gestorUsers,
+  notes: initialNotes,
+  canManageNotes,
+  canSeeAuxFiles,
   nextZnacka,
 }: Props) {
   const router = useRouter()
@@ -373,15 +397,35 @@ export default function DocumentDetailClient({
 
   // Attachment state
   const [attachModal, setAttachModal] = useState<
-    { mode: "create" } | { mode: "edit" | "newVersion"; attachment: AttachmentData } | null
+    { mode: "create" } | { mode: "edit" | "draft"; attachment: AttachmentData } | null
   >(null)
   const [deletingAttach, setDeletingAttach] = useState<number | null>(null)
   const [attachAccessModal, setAttachAccessModal] = useState<AttachmentData | null>(null)
   const [attachAccessPending, setAttachAccessPending] = useState<number | null>(null)
   const [expandedAttachHistory, setExpandedAttachHistory] = useState<number | null>(null) // rootId
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
 
-  // New document version modal
-  const [showNewDocVersion, setShowNewDocVersion] = useState(false)
+  // New document draft modal
+  const [showNewDocDraft, setShowNewDocDraft] = useState(false)
+  const [approvingDoc, setApprovingDoc] = useState(false)
+
+  // Notes state — initialNotes comes directly from server props (router.refresh() updates them)
+  const [newNoteText, setNewNoteText] = useState("")
+  const [addingNote, setAddingNote] = useState(false)
+  const [editingNoteId, setEditingNoteId] = useState<number | null>(null)
+  const [editingNoteText, setEditingNoteText] = useState("")
+  const [savingNote, setSavingNote] = useState(false)
+  const [deletingNoteId, setDeletingNoteId] = useState<number | null>(null)
+
+  // Aux files state
+  const auxFileRef = useRef<HTMLInputElement>(null)
+  const [addingDocAuxFile, setAddingDocAuxFile] = useState(false)
+  const [savingDocAuxFile, setSavingDocAuxFile] = useState(false)
+  const [deletingDocAuxFileId, setDeletingDocAuxFileId] = useState<number | null>(null)
+  const attAuxFileRefs = useRef<Map<number, HTMLInputElement | null>>(new Map())
+  const [addingAttAuxFile, setAddingAttAuxFile] = useState<number | null>(null) // attachmentId
+  const [savingAttAuxFile, setSavingAttAuxFile] = useState(false)
+  const [deletingAttAuxFileId, setDeletingAttAuxFileId] = useState<number | null>(null)
 
   const currentGestor = doc.gestors[0] ?? null
   const accessIds = new Set(doc.accesses.map((a) => a.id))
@@ -423,6 +467,93 @@ export default function DocumentDetailClient({
     setGestorPending(false); router.refresh()
   }
 
+  async function handleApproveDoc() {
+    if (!confirm(`Naozaj chcete schváliť návrh verzie „${doc.nazov}"? Aktuálna verzia bude archivovaná.`)) return
+    setApprovingDoc(true)
+    await approveDocumentDraft(doc.id)
+    setApprovingDoc(false)
+    router.push(`/dashboard/dokumenty/${doc.agendaId}/${doc.id}`)
+    router.refresh()
+  }
+
+  async function handleApproveAttachment(attachmentId: number) {
+    if (!confirm("Naozaj chcete schváliť návrh prílohy?")) return
+    await approveAttachmentDraft(attachmentId)
+    router.refresh()
+  }
+
+  async function handleAddNote() {
+    if (!newNoteText.trim()) return
+    setSavingNote(true)
+    const res = await createDocumentNote(doc.id, newNoteText)
+    setSavingNote(false)
+    if (res?.success) {
+      setNewNoteText("")
+      setAddingNote(false)
+      router.refresh()
+    }
+  }
+
+  async function handleSaveNote(noteId: number) {
+    if (!editingNoteText.trim()) return
+    setSavingNote(true)
+    await updateDocumentNote(noteId, editingNoteText)
+    setSavingNote(false)
+    setEditingNoteId(null)
+    router.refresh()
+  }
+
+  async function handleDeleteNote(noteId: number) {
+    if (!confirm("Naozaj chcete zmazať túto poznámku?")) return
+    setDeletingNoteId(noteId)
+    await deleteDocumentNote(noteId)
+    setDeletingNoteId(null)
+    router.refresh()
+  }
+
+  async function handleAddDocAuxFile() {
+    const file = auxFileRef.current?.files?.[0]
+    if (!file) return
+    setSavingDocAuxFile(true)
+    const fd = new FormData()
+    fd.set("file", file)
+    await addDocumentAuxFile(doc.id, fd)
+    setSavingDocAuxFile(false)
+    setAddingDocAuxFile(false)
+    if (auxFileRef.current) auxFileRef.current.value = ""
+    router.refresh()
+  }
+
+  async function handleDeleteDocAuxFile(fileId: number) {
+    if (!confirm("Naozaj chcete zmazať tento pomocný súbor?")) return
+    setDeletingDocAuxFileId(fileId)
+    await deleteDocumentAuxFile(fileId)
+    setDeletingDocAuxFileId(null)
+    router.refresh()
+  }
+
+  async function handleAddAttAuxFile(attachmentId: number) {
+    const fileInput = attAuxFileRefs.current.get(attachmentId)
+    const file = fileInput?.files?.[0]
+    if (!file) return
+    setSavingAttAuxFile(true)
+    const fd = new FormData()
+    fd.set("file", file)
+    await addAttachmentAuxFile(attachmentId, fd)
+    setSavingAttAuxFile(false)
+    setAddingAttAuxFile(null)
+    if (fileInput) fileInput.value = ""
+    router.refresh()
+  }
+
+  async function handleDeleteAttAuxFile(fileId: number) {
+    if (!confirm("Naozaj chcete zmazať tento pomocný súbor?")) return
+    setDeletingAttAuxFileId(fileId)
+    await deleteAttachmentAuxFile(fileId)
+    setDeletingAttAuxFileId(null)
+    router.refresh()
+  }
+
   async function handleDeleteAttachment(id: number) {
     if (!confirm("Naozaj chcete zmazať túto verziu prílohy?")) return
     setDeletingAttach(id)
@@ -438,7 +569,7 @@ export default function DocumentDetailClient({
   }
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-4 text-sm text-gray-500 dark:text-gray-400">
         <Link href="/dashboard/dokumenty" className="hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
@@ -480,12 +611,21 @@ export default function DocumentDetailClient({
               <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                 {doc.znacka}
               </span>
-              {doc.version > 1 && (
+              {doc.status === "DRAFT" ? (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  v_rev{doc.version}
+                </span>
+              ) : doc.version > 1 ? (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                   v{doc.version}
                 </span>
+              ) : null}
+              {doc.status === "DRAFT" && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
+                  Draft
+                </span>
               )}
-              {!doc.isLatest && (
+              {doc.status === "PUBLISHED" && !doc.isLatest && (
                 <span className="text-xs font-medium px-2 py-0.5 rounded bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
                   Archivovaná
                 </span>
@@ -500,15 +640,36 @@ export default function DocumentDetailClient({
             <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{doc.nazov}</h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {canEdit && doc.isLatest && !editing && (
+            {/* Draft: Schváliť button */}
+            {canEdit && doc.status === "DRAFT" && !editing && (
               <button
-                onClick={() => setShowNewDocVersion(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                onClick={handleApproveDoc}
+                disabled={approvingDoc}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-60"
               >
-                <GitBranch size={14} /> Nová verzia
+                {approvingDoc ? <Loader2 size={14} className="animate-spin" /> : <GitBranch size={14} />}
+                Schváliť verziu
               </button>
             )}
-            {canEdit && doc.isLatest && !editing && (
+            {/* Published + latest: Vytvoriť návrh */}
+            {canEdit && doc.isLatest && doc.status === "PUBLISHED" && !editing && !hasDraft && (
+              <button
+                onClick={() => setShowNewDocDraft(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-700 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+              >
+                <GitBranch size={14} /> Vytvoriť návrh
+              </button>
+            )}
+            {/* Published + latest: existing draft link */}
+            {canEdit && doc.isLatest && doc.status === "PUBLISHED" && !editing && hasDraft && draftDocId && (
+              <Link
+                href={`/dashboard/dokumenty/${doc.agendaId}/${draftDocId}`}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-orange-700 dark:text-orange-400 border border-orange-300 dark:border-orange-700 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors"
+              >
+                <GitBranch size={14} /> Zobraziť návrh
+              </Link>
+            )}
+            {canEdit && (doc.status === "PUBLISHED" ? doc.isLatest : true) && !editing && (
               <button
                 onClick={() => { setEditing(true); setError(""); setFileName(null); setRemovePriloha(false) }}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg transition-colors"
@@ -542,7 +703,7 @@ export default function DocumentDetailClient({
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Príloha</label>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor</label>
               {doc.prilohaName && !removePriloha ? (
                 <div className="flex items-center gap-2 p-2 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
                   <Paperclip size={14} className="text-gray-400 shrink-0" />
@@ -553,7 +714,7 @@ export default function DocumentDetailClient({
                 <div className="space-y-1">
                   {removePriloha && (
                     <p className="text-xs text-orange-600 dark:text-orange-400">
-                      Príloha bude odstránená.{" "}
+                      Súbor bude odstránený.{" "}
                       <button onClick={() => setRemovePriloha(false)} className="underline">Zrušiť</button>
                     </p>
                   )}
@@ -593,7 +754,7 @@ export default function DocumentDetailClient({
                 ? <span className="text-sm text-gray-900 dark:text-gray-100">{currentGestor.name}</span>
                 : <span className="text-sm text-gray-400 dark:text-gray-500">—</span>}
             </Field>
-            <Field label="Príloha">
+            <Field label="Hlavný súbor">
               {doc.prilohaPath ? (
                 <a href={`/api/dokumenty/file/${doc.prilohaPath}?name=${encodeURIComponent(doc.prilohaName ?? "priloha")}`}
                   target="_blank" rel="noopener noreferrer"
@@ -601,9 +762,52 @@ export default function DocumentDetailClient({
                   <Download size={14} />{doc.prilohaName}
                 </a>
               ) : (
-                <span className="text-sm text-gray-400 dark:text-gray-500">Žiadna príloha</span>
+                <span className="text-sm text-gray-400 dark:text-gray-500">Žiadny súbor</span>
               )}
             </Field>
+            {canSeeAuxFiles && (
+              <div className="col-span-full">
+                <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Pomocné súbory</dt>
+                <dd className="space-y-1">
+                  {doc.auxFiles.map((f) => (
+                    <div key={f.id} className="flex items-center gap-2">
+                      <a href={`/api/dokumenty/file/${f.storedName}?name=${encodeURIComponent(f.originalName)}`}
+                        target="_blank" rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline flex-1 min-w-0 truncate">
+                        <Download size={13} />{f.originalName}
+                      </a>
+                      {canEdit && (
+                        <button onClick={() => handleDeleteDocAuxFile(f.id)} disabled={deletingDocAuxFileId === f.id}
+                          className="p-1 text-gray-300 hover:text-red-500 rounded transition-colors shrink-0" title="Zmazať">
+                          {deletingDocAuxFileId === f.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {canEdit && !addingDocAuxFile && (
+                    <button onClick={() => setAddingDocAuxFile(true)}
+                      className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition-colors mt-1">
+                      <Plus size={12} /> Pridať pomocný súbor
+                    </button>
+                  )}
+                  {canEdit && addingDocAuxFile && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <input ref={auxFileRef} type="file"
+                        className="text-xs text-gray-700 dark:text-gray-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300" />
+                      <button onClick={handleAddDocAuxFile} disabled={savingDocAuxFile}
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-60">
+                        {savingDocAuxFile ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />} Uložiť
+                      </button>
+                      <button onClick={() => setAddingDocAuxFile(false)}
+                        className="px-2 py-1 text-xs text-gray-400 hover:text-gray-600 rounded">Zrušiť</button>
+                    </div>
+                  )}
+                  {doc.auxFiles.length === 0 && !addingDocAuxFile && (
+                    <span className="text-sm text-gray-400 dark:text-gray-500">—</span>
+                  )}
+                </dd>
+              </div>
+            )}
             {doc.datumPrvehoSchvalenia && (
               <Field label="Agenda">
                 <span className="text-sm text-gray-900 dark:text-gray-100">{doc.agendaName}</span>
@@ -616,44 +820,62 @@ export default function DocumentDetailClient({
       {/* Version History */}
       {versionHistory.length > 1 && (
         <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-            <History size={15} className="text-gray-500" />
+          <button
+            type="button"
+            onClick={() => setVersionHistoryOpen((o) => !o)}
+            className="w-full px-5 py-4 flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors rounded-xl"
+          >
+            <History size={15} className="text-gray-500 shrink-0" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">História verzií</h2>
             <span className="text-xs text-gray-400 dark:text-gray-500">({versionHistory.length})</span>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-700/50 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                <th className="text-left px-5 py-2.5">Ver.</th>
-                <th className="text-left px-5 py-2.5">Značka</th>
-                <th className="text-left px-5 py-2.5">Názov</th>
-                <th className="text-left px-5 py-2.5">Dátum schválenia</th>
-                <th className="text-left px-5 py-2.5">Stav</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-              {versionHistory.map((v) => (
-                <tr
-                  key={v.id}
-                  onClick={() => router.push(`/dashboard/dokumenty/${doc.agendaId}/${v.id}`)}
-                  className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${v.id === doc.id ? "bg-blue-50/50 dark:bg-blue-900/10" : ""}`}
-                >
-                  <td className="px-5 py-3">
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">v{v.version}</span>
-                  </td>
-                  <td className="px-5 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">{v.znacka}</td>
-                  <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{v.nazov}</td>
-                  <td className="px-5 py-3 text-gray-600 dark:text-gray-400 tabular-nums">{fmtDate(v.datumSchvalenia)}</td>
-                  <td className="px-5 py-3">
-                    {v.isLatest
-                      ? <span className="text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">Aktuálna</span>
-                      : <span className="text-xs text-gray-400 dark:text-gray-500">Archivovaná</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            <span className="ml-auto text-gray-400 dark:text-gray-500">
+              {versionHistoryOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </span>
+          </button>
+          {versionHistoryOpen && (
+            <>
+              <div className="border-t border-gray-200 dark:border-gray-700" />
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 dark:border-gray-700/50 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                    <th className="text-left px-5 py-2.5">Ver.</th>
+                    <th className="text-left px-5 py-2.5">Značka</th>
+                    <th className="text-left px-5 py-2.5">Názov</th>
+                    <th className="text-left px-5 py-2.5">Dátum schválenia</th>
+                    <th className="text-left px-5 py-2.5">Stav</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                  {versionHistory.map((v) => (
+                    <tr
+                      key={v.id}
+                      onClick={() => router.push(`/dashboard/dokumenty/${doc.agendaId}/${v.id}`)}
+                      className={`cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${v.id === doc.id ? "bg-blue-50/50 dark:bg-blue-900/10" : ""}`}
+                    >
+                      <td className="px-5 py-3">
+                        {v.status === "DRAFT" ? (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">v_rev{v.version}</span>
+                        ) : (
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">v{v.version}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 font-mono text-xs text-blue-600 dark:text-blue-400">{v.znacka}</td>
+                      <td className="px-5 py-3 text-gray-700 dark:text-gray-300">{v.nazov}</td>
+                      <td className="px-5 py-3 text-gray-600 dark:text-gray-400 tabular-nums">{fmtDate(v.datumSchvalenia)}</td>
+                      <td className="px-5 py-3">
+                        {v.status === "DRAFT"
+                          ? <span className="text-xs font-semibold text-orange-700 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 rounded-full border border-orange-200 dark:border-orange-700">Draft</span>
+                          : v.isLatest
+                            ? <span className="text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">Aktuálna</span>
+                            : <span className="text-xs text-gray-400 dark:text-gray-500">Archivovaná</span>
+                        }
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
       )}
 
@@ -695,20 +917,30 @@ export default function DocumentDetailClient({
                 {latestAttachments.map((att) => {
                   const rootId = att.parentId ?? att.id
                   const family = attByRoot.get(rootId) ?? [att]
-                  const hasHistory = family.length > 1
+                  const historicCount = family.filter((a) => !a.isLatest && a.status !== "DRAFT").length
+                  const hasHistory = historicCount > 0
                   const isExpanded = expandedAttachHistory === rootId
 
                   return (
                     <Fragment key={att.id}>
                       <tr className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                        <td className="px-5 py-3">
+                        <td className="px-5 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
                               {att.znacka}
                             </span>
-                            {att.version > 1 && (
+                            {att.status === "DRAFT" ? (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+                                v_rev{att.version}
+                              </span>
+                            ) : att.version > 1 ? (
                               <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                                 v{att.version}
+                              </span>
+                            ) : null}
+                            {att.status === "DRAFT" && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border border-orange-200 dark:border-orange-700">
+                                Draft
                               </span>
                             )}
                           </div>
@@ -751,7 +983,7 @@ export default function DocumentDetailClient({
                                 className={`p-1.5 rounded-lg transition-colors text-xs font-medium flex items-center gap-1 ${isExpanded ? "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20" : "text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20"}`}
                                 title="História verzií"
                               >
-                                <History size={13} /> {family.length}
+                                <History size={13} /> {historicCount}
                               </button>
                             )}
                             {canEdit && att.confidentiality === "DOVERNI" && (
@@ -760,12 +992,23 @@ export default function DocumentDetailClient({
                                 <Users size={13} />
                               </button>
                             )}
+                            {canEdit && att.status === "DRAFT" && (
+                              <button onClick={() => handleApproveAttachment(att.id)}
+                                className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="Schváliť návrh prílohy">
+                                <GitBranch size={13} />
+                              </button>
+                            )}
+                            {canEdit && att.status === "PUBLISHED" && doc.isLatest && (
+                              <button
+                                onClick={() => setAttachModal({ mode: "draft", attachment: att })}
+                                className="p-1.5 text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors"
+                                title="Vytvoriť návrh novej verzie prílohy"
+                              >
+                                <GitBranch size={13} />
+                              </button>
+                            )}
                             {canEdit && doc.isLatest && (
                               <>
-                                <button onClick={() => setAttachModal({ mode: "newVersion", attachment: att })}
-                                  className="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="Nová verzia prílohy">
-                                  <GitBranch size={13} />
-                                </button>
                                 <button onClick={() => setAttachModal({ mode: "edit", attachment: att })}
                                   className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Editovať">
                                   <Pencil size={13} />
@@ -779,8 +1022,52 @@ export default function DocumentDetailClient({
                           </div>
                         </td>
                       </tr>
+                      {/* Draft attachment rows — always visible to gestors */}
+                      {family.filter((a) => a.status === "DRAFT").map((draft) => (
+                        <tr key={draft.id} className="border-b border-orange-100 dark:border-orange-900/30 bg-orange-50/40 dark:bg-orange-900/10">
+                          <td className="pl-10 pr-5 py-2 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs text-orange-700 dark:text-orange-400">{draft.znacka}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">v_rev{draft.version}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded border border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-400">Draft</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-2 text-xs text-orange-700 dark:text-orange-300">{draft.nazov}</td>
+                          <td className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 tabular-nums">—</td>
+                          <td className="px-5 py-2 text-xs text-gray-400 dark:text-gray-500 tabular-nums">{fmtDate(draft.datumSchvalenia)}</td>
+                          <td className="px-5 py-2" colSpan={2}>
+                            {draft.filePath && draft.canDownload ? (
+                              <a href={`/api/dokumenty/file/${draft.filePath}?name=${encodeURIComponent(draft.fileName ?? "priloha")}`}
+                                target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 text-blue-500 hover:underline text-xs">
+                                <Download size={12} /> {draft.fileName}
+                              </a>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="px-5 py-2 text-right">
+                            {canEdit && (
+                              <div className="flex items-center gap-1 justify-end">
+                                <button onClick={() => handleApproveAttachment(draft.id)}
+                                  className="p-1 text-gray-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors" title="Schváliť návrh">
+                                  <GitBranch size={12} />
+                                </button>
+                                <button onClick={() => setAttachModal({ mode: "edit", attachment: draft })}
+                                  className="p-1 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors" title="Editovať návrh">
+                                  <Pencil size={12} />
+                                </button>
+                                <button onClick={() => handleDeleteAttachment(draft.id)} disabled={deletingAttach === draft.id}
+                                  className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors" title="Zmazať návrh">
+                                  {deletingAttach === draft.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
                       {/* Inline attachment version history */}
-                      {isExpanded && family.filter((a) => !a.isLatest).map((old) => (
+                      {isExpanded && family.filter((a) => !a.isLatest && a.status !== "DRAFT").map((old) => (
                         <tr key={old.id} className="border-b border-gray-100 dark:border-gray-700/30 bg-gray-50/50 dark:bg-gray-800/20">
                           <td className="pl-10 pr-5 py-2">
                             <div className="flex items-center gap-1.5">
@@ -816,6 +1103,50 @@ export default function DocumentDetailClient({
                           </td>
                         </tr>
                       ))}
+                      {/* Auxiliary files for this attachment */}
+                      {canSeeAuxFiles && (att.auxFiles.length > 0 || (canEdit && doc.isLatest)) && (
+                        <tr className="border-b border-gray-100 dark:border-gray-700/30 bg-gray-50/30 dark:bg-gray-800/10">
+                          <td colSpan={7} className="pl-10 pr-5 py-2">
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                              <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide shrink-0">Pomocné súbory</span>
+                              {att.auxFiles.map((f) => (
+                                <div key={f.id} className="flex items-center gap-1">
+                                  <a href={`/api/dokumenty/file/${f.storedName}?name=${encodeURIComponent(f.originalName)}`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                                    <Download size={11} />{f.originalName}
+                                  </a>
+                                  {canEdit && (
+                                    <button onClick={() => handleDeleteAttAuxFile(f.id)} disabled={deletingAttAuxFileId === f.id}
+                                      className="p-0.5 text-gray-300 hover:text-red-500 rounded transition-colors" title="Zmazať">
+                                      {deletingAttAuxFileId === f.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {canEdit && doc.isLatest && addingAttAuxFile === att.id ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    ref={(el) => { attAuxFileRefs.current.set(att.id, el) }}
+                                    type="file"
+                                    className="text-xs text-gray-700 dark:text-gray-300 file:mr-1 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-xs file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300"
+                                  />
+                                  <button onClick={() => handleAddAttAuxFile(att.id)} disabled={savingAttAuxFile}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-60">
+                                    {savingAttAuxFile ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Uložiť
+                                  </button>
+                                  <button onClick={() => setAddingAttAuxFile(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">Zrušiť</button>
+                                </div>
+                              ) : canEdit && doc.isLatest ? (
+                                <button onClick={() => setAddingAttAuxFile(att.id)}
+                                  className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-blue-500 transition-colors">
+                                  <Plus size={11} /> Pridať
+                                </button>
+                              ) : null}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
                     </Fragment>
                   )
                 })}
@@ -838,7 +1169,7 @@ export default function DocumentDetailClient({
               disabled={gestorPending}
               className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
               <option value="">— Žiadny gestor —</option>
-              {allUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              {gestorUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
             </select>
             {gestorPending && <Loader2 size={16} className="animate-spin text-gray-400 shrink-0" />}
           </div>
@@ -891,6 +1222,126 @@ export default function DocumentDetailClient({
               {allUsers.length === 0 && <p className="px-5 py-4 text-sm text-gray-500 dark:text-gray-400">Žiadni ďalší používatelia.</p>}
             </>
           )}
+        </div>
+      )}
+
+      {/* Poznámky */}
+      {canManageNotes && (
+        <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
+          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageSquare size={15} className="text-gray-500" />
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Poznámky</h2>
+              {initialNotes.length > 0 && (
+                <span className="text-xs text-gray-400 dark:text-gray-500">({initialNotes.length})</span>
+              )}
+            </div>
+            {!addingNote && (
+              <button
+                onClick={() => setAddingNote(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+              >
+                <Plus size={13} /> Pridať poznámku
+              </button>
+            )}
+          </div>
+
+          <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+            {initialNotes.length === 0 && !addingNote && (
+              <p className="px-5 py-5 text-sm text-gray-400 dark:text-gray-500">Žiadne poznámky.</p>
+            )}
+
+            {initialNotes.map((note) => (
+              <div key={note.id} className="px-5 py-4">
+                {editingNoteId === note.id ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={editingNoteText}
+                      onChange={(e) => setEditingNoteText(e.target.value)}
+                      rows={3}
+                      className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => setEditingNoteId(null)}
+                        className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                      >
+                        Zrušiť
+                      </button>
+                      <button
+                        onClick={() => handleSaveNote(note.id)}
+                        disabled={savingNote || !editingNoteText.trim()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium disabled:opacity-60 transition-colors"
+                      >
+                        {savingNote && <Loader2 size={12} className="animate-spin" />}
+                        Uložiť
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-start gap-3 group">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900 dark:text-gray-100 whitespace-pre-wrap leading-relaxed">{note.content}</p>
+                      <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
+                        {note.createdByName}
+                        {" · "}
+                        {new Date(note.updatedAt) > new Date(note.createdAt)
+                          ? `upravené ${new Date(note.updatedAt).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
+                          : new Date(note.createdAt).toLocaleDateString("sk-SK", { day: "numeric", month: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                        }
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      <button
+                        onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.content) }}
+                        className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                        title="Upraviť"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteNote(note.id)}
+                        disabled={deletingNoteId === note.id}
+                        className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                        title="Zmazať"
+                      >
+                        {deletingNoteId === note.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {addingNote && (
+              <div className="px-5 py-4 space-y-2">
+                <textarea
+                  value={newNoteText}
+                  onChange={(e) => setNewNoteText(e.target.value)}
+                  placeholder="Napíšte poznámku…"
+                  rows={3}
+                  autoFocus
+                  className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setAddingNote(false); setNewNoteText("") }}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                  >
+                    Zrušiť
+                  </button>
+                  <button
+                    onClick={handleAddNote}
+                    disabled={savingNote || !newNoteText.trim()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium disabled:opacity-60 transition-colors"
+                  >
+                    {savingNote ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    Uložiť
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -947,13 +1398,14 @@ export default function DocumentDetailClient({
         </div>
       )}
 
-      {showNewDocVersion && (
-        <NewDocVersionModal
+      {showNewDocDraft && (
+        <NewDocDraftModal
           doc={doc}
           nextZnacka={nextDocVersionZnacka}
-          onClose={() => setShowNewDocVersion(false)}
+          nextVersion={doc.version + 1}
+          onClose={() => setShowNewDocDraft(false)}
           onCreated={(newId) => {
-            setShowNewDocVersion(false)
+            setShowNewDocDraft(false)
             router.push(`/dashboard/dokumenty/${doc.agendaId}/${newId}`)
           }}
         />
