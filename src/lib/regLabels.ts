@@ -89,12 +89,16 @@ export const zaznamDovernostColors: Record<ZaznamDovernost, string> = {
 }
 
 export const spisStatusLabels: Record<SpisStatus, string> = {
-  OTVORENY: "Otvorený",
-  UZATVORENY: "Uzatvorený",
+  OTVORENY:   "Otvorený",
+  ODLOZENY:   "Odložený",
+  VYBAVENY:   "Vybavený",
+  UZATVORENY: "Vybavený",
 }
 
 export const spisStatusColors: Record<SpisStatus, string> = {
-  OTVORENY: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  OTVORENY:   "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  ODLOZENY:   "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  VYBAVENY:   "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
   UZATVORENY: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
 }
 

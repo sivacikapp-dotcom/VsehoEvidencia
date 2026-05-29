@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createAuditLog } from "@/lib/auditLog"
 import { nextSpisNumber, currentYear } from "@/lib/regCounter"
+import type { SpisStatus } from "@/generated/prisma/enums"
 
 type Result = { error?: string; success?: boolean; id?: number }
 
@@ -13,6 +14,8 @@ function canManageSpis(roles: string[], spis: { spracovatelId: number }, userId:
   if (roles.includes("SPRAVCA_REGISTRATURY") || roles.includes("SPRAVCA_APLIKACIE")) return true
   return roles.includes("SPRACOVATEL_REGISTRATURY") && spis.spracovatelId === userId
 }
+
+const CLOSED_STATUSES: SpisStatus[] = ["VYBAVENY", "UZATVORENY"]
 
 export async function createSpis(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
@@ -23,18 +26,25 @@ export async function createSpis(formData: FormData): Promise<Result> {
   }
 
   const nazov = (formData.get("nazov") as string)?.trim()
-  if (!nazov) return { error: "Zadajte názov spisu." }
+  if (!nazov) return { error: "Zadajte Vec spisu." }
   const planId = parseInt(formData.get("planId") as string)
-  if (isNaN(planId)) return { error: "Vyberte registratúrny plán." }
+  if (isNaN(planId)) return { error: "Vyberte registratúrnu značku." }
 
-  const year = currentYear()
-  const cisloSpisu = await nextSpisNumber(year)
+  const popis = (formData.get("popis") as string)?.trim() || null
+  const utvarIdRaw = formData.get("utvarId") as string
+  const utvarId = utvarIdRaw ? parseInt(utvarIdRaw) : null
+
+  const rok = currentYear()
+  const cisloSpisu = await nextSpisNumber(rok)
 
   try {
     const created = await prisma.spis.create({
       data: {
         cisloSpisu,
         nazov,
+        rok,
+        popis,
+        utvarId: utvarId && !isNaN(utvarId) ? utvarId : null,
         planId,
         spracovatelId: parseInt(session.user.id),
         createdById: parseInt(session.user.id),
@@ -63,21 +73,60 @@ export async function updateSpis(spisId: number, formData: FormData): Promise<Re
   if (!canManageSpis(session.user.roles as string[], spis, parseInt(session.user.id))) {
     return { error: "Nemáte oprávnenie." }
   }
-  if (spis.status === "UZATVORENY") return { error: "Uzatvorený spis nie je možné upravovať." }
+  if (CLOSED_STATUSES.includes(spis.status)) return { error: "Vybavený spis nie je možné upravovať." }
 
   const nazov = (formData.get("nazov") as string)?.trim()
-  if (!nazov) return { error: "Zadajte názov spisu." }
+  if (!nazov) return { error: "Zadajte Vec spisu." }
+
+  const popis = (formData.get("popis") as string)?.trim() || null
+  const planIdRaw = formData.get("planId") as string
+  const planId = planIdRaw ? parseInt(planIdRaw) : spis.planId
+  const rokRaw = formData.get("rok") as string
+  const rok = rokRaw ? parseInt(rokRaw) : spis.rok
+  const utvarIdRaw = formData.get("utvarId") as string
+  const utvarId = utvarIdRaw ? parseInt(utvarIdRaw) : null
+  const stavRaw = formData.get("status") as string
+  const status = (stavRaw as SpisStatus) || spis.status
+  const spracovatelIdRaw = formData.get("spracovatelId") as string
+  const spracovatelId = spracovatelIdRaw ? parseInt(spracovatelIdRaw) : spis.spracovatelId
+
+  // When moving to VYBAVENY, check that all records are processed
+  if (status === "VYBAVENY" && spis.status !== "VYBAVENY") {
+    const zaznamy = await prisma.spisZaznam.findMany({
+      where: { spisId },
+      include: { zaznam: { select: { stav: true, cisloZaznamu: true } } },
+    })
+    const open = zaznamy.filter(sz => sz.zaznam.stav !== "VYBAVENY")
+    if (open.length > 0) {
+      const nums = open.map(sz => sz.zaznam.cisloZaznamu).join(", ")
+      return { error: `Nie je možné vybaviť spis – tieto záznamy nie sú vybavené: ${nums}` }
+    }
+  }
+
+  const datumUzatvorenia = CLOSED_STATUSES.includes(status) && !CLOSED_STATUSES.includes(spis.status)
+    ? new Date()
+    : spis.datumUzatvorenia
 
   try {
     await prisma.spis.update({
       where: { id: spisId },
-      data: { nazov, planId: parseInt(formData.get("planId") as string) },
+      data: {
+        nazov,
+        popis,
+        planId: !isNaN(planId) ? planId : spis.planId,
+        rok: !isNaN(rok) ? rok : spis.rok,
+        utvarId: utvarId && !isNaN(utvarId) ? utvarId : null,
+        status,
+        spracovatelId: !isNaN(spracovatelId) ? spracovatelId : spis.spracovatelId,
+        datumUzatvorenia,
+      },
     })
     await createAuditLog({
       userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
       action: "UPDATE", entityType: "SPIS", entityId: spisId,
       entityLabel: spis.cisloSpisu,
-      oldData: { nazov: spis.nazov }, newData: { nazov },
+      oldData: { nazov: spis.nazov, status: spis.status },
+      newData: { nazov, status },
     })
     revalidatePath(`/dashboard/registratura/spisy/${spisId}`)
     revalidatePath("/dashboard/registratura/spisy")
@@ -101,7 +150,7 @@ export async function addZaznamToSpis(spisId: number, zaznamId: number): Promise
   if (!canManageSpis(session.user.roles as string[], spis, parseInt(session.user.id))) {
     return { error: "Nemáte oprávnenie na úpravu tohto spisu." }
   }
-  if (spis.status === "UZATVORENY") return { error: "Uzatvorený spis nie je možné upravovať." }
+  if (CLOSED_STATUSES.includes(spis.status)) return { error: "Vybavený spis nie je možné upravovať." }
   if (zaznam.stav === "VYBAVENY") return { error: "Vybavený záznam nie je možné vložiť do spisu." }
 
   const exists = await prisma.spisZaznam.findUnique({
@@ -136,7 +185,7 @@ export async function removeZaznamFromSpis(spisId: number, zaznamId: number): Pr
   if (!canManageSpis(session.user.roles as string[], spis, parseInt(session.user.id))) {
     return { error: "Nemáte oprávnenie." }
   }
-  if (spis.status === "UZATVORENY") return { error: "Uzatvorený spis nie je možné upravovať." }
+  if (CLOSED_STATUSES.includes(spis.status)) return { error: "Vybavený spis nie je možné upravovať." }
 
   try {
     await prisma.spisZaznam.delete({
@@ -150,46 +199,9 @@ export async function removeZaznamFromSpis(spisId: number, zaznamId: number): Pr
   }
 }
 
+// kept for backward compatibility — no longer called from new UI
 export async function uzatvoritSpis(spisId: number): Promise<Result> {
-  const session = await getServerSession(authOptions)
-  if (!session) return { error: "Nie ste prihlásený." }
-
-  const spis = await prisma.spis.findUnique({
-    where: { id: spisId },
-    include: { zaznamy: { include: { zaznam: { select: { stav: true, cisloZaznamu: true } } } }, plan: true },
-  })
-  if (!spis) return { error: "Spis nenájdený." }
-  if (!canManageSpis(session.user.roles as string[], spis, parseInt(session.user.id))) {
-    return { error: "Nemáte oprávnenie." }
-  }
-  if (spis.status === "UZATVORENY") return { error: "Spis je už uzatvorený." }
-
-  const openZaznamy = spis.zaznamy.filter(
-    sz => sz.zaznam.stav !== "VYBAVENY"
-  )
-  if (openZaznamy.length > 0) {
-    const nums = openZaznamy.map(sz => sz.zaznam.cisloZaznamu).join(", ")
-    return { error: `Nie je možné uzatvoriť spis – tieto záznamy nie sú uzavreté: ${nums}` }
-  }
-
-  const rok = new Date().getFullYear() + spis.plan.lehota
-
-  try {
-    await prisma.spis.update({
-      where: { id: spisId },
-      data: { status: "UZATVORENY", datumUzatvorenia: new Date(), rokVyradenia: rok },
-    })
-    await createAuditLog({
-      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
-      action: "UPDATE", entityType: "SPIS", entityId: spisId,
-      entityLabel: spis.cisloSpisu,
-      oldData: { status: "OTVORENY" }, newData: { status: "UZATVORENY", rokVyradenia: rok },
-    })
-    revalidatePath(`/dashboard/registratura/spisy/${spisId}`)
-    revalidatePath("/dashboard/registratura/spisy")
-    return { success: true }
-  } catch (e) {
-    console.error("[uzatvoritSpis]", e)
-    return { error: "Nastala chyba." }
-  }
+  const fd = new FormData()
+  fd.append("status", "VYBAVENY")
+  return { error: "Použite pole Stav v editačnom formulári." }
 }

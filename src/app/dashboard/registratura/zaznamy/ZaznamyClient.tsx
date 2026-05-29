@@ -11,6 +11,7 @@ import {
 } from "@/lib/regLabels"
 import type { ZaznamKategoria, ZaznamStav, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
 import { createZaznam } from "./actions"
+import ContactFields, { type SubjektItem } from "@/components/ContactFields"
 
 type ZaznamRow = {
   id: number
@@ -31,6 +32,7 @@ type ZaznamRow = {
 interface Props {
   zaznamy: ZaznamRow[]
   utvary: { id: number; nazov: string }[]
+  subjekty: SubjektItem[]
   isAdmin: boolean
   canCreate: boolean
 }
@@ -59,7 +61,7 @@ function Th({ label, colKey, sortKey, sortDir, onSort }: {
 const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
 const labelCls = "block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
 
-export default function ZaznamyClient({ zaznamy, utvary, isAdmin, canCreate }: Props) {
+export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canCreate }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
@@ -277,6 +279,15 @@ export default function ZaznamyClient({ zaznamy, utvary, isAdmin, canCreate }: P
                 <label className={labelCls}>Popis</label>
                 <textarea name="popis" rows={2} className={`${inputCls} resize-none`} placeholder="Podrobnejší popis..." />
               </div>
+
+              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">
+                  {newKategoria === "PRIJATY" ? "Odosielateľ" : "Adresát"}
+                  <span className="ml-1 font-normal normal-case text-gray-400">(voliteľné)</span>
+                </p>
+                <ContactFields subjekty={subjekty} />
+              </div>
+
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
                 <button type="button" onClick={() => setShowNew(false)}

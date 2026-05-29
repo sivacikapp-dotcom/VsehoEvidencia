@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useTransition, useRef, useEffect } from "react"
+import { useState, useTransition, useRef } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft, FileText, Upload, Download, ShieldCheck, ShieldAlert,
   CheckCircle, FolderOpen, Pencil, X, Plus, Trash2, Loader2,
-  Inbox, Send, User, Building2, Paperclip, Search,
+  Inbox, Send, User, Building2, Paperclip,
 } from "lucide-react"
 import {
   regZaznamTypeLabels,
@@ -25,6 +25,7 @@ import {
   saveOdosielatel, addAdresat, updateAdresat, deleteAdresat,
   addZaznamPriloha, deleteZaznamPriloha,
 } from "../actions"
+import ContactFields, { type SubjektItem } from "@/components/ContactFields"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ type ZaznamDetail = {
   cisloZaznamu: string
   kategoria: ZaznamKategoria
   rok: number
+  spracovatelId: number
   spracovatel: string
   utvar: { id: number; nazov: string } | null
   formaZaznamu: RegZaznamType
@@ -67,17 +69,11 @@ type ZaznamDetail = {
   updatedAt: string
 }
 
-type SubjektItem = {
-  id: number
-  meno: string | null; priezvisko: string | null; nazov: string | null
-  oddelenie: string | null; ulica: string | null; mesto: string | null
-  psc: string | null; identifikator: string | null
-}
-
 interface Props {
   zaznam: ZaznamDetail
   utvary: { id: number; nazov: string }[]
   subjekty: SubjektItem[]
+  spracovatelov: { id: number; firstName: string; lastName: string }[]
   canManage: boolean
   isAdmin: boolean
 }
@@ -102,134 +98,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-// ─── Contact form fields with address book search ────────────────────────────
-
-type ContactValues = {
-  meno: string; priezvisko: string; nazov: string; oddelenie: string
-  ulica: string; mesto: string; psc: string; identifikator: string
-}
-
-function toValues(d?: Record<string, string | null> | null): ContactValues {
-  return {
-    meno: d?.meno ?? "", priezvisko: d?.priezvisko ?? "", nazov: d?.nazov ?? "",
-    oddelenie: d?.oddelenie ?? "", ulica: d?.ulica ?? "", mesto: d?.mesto ?? "",
-    psc: d?.psc ?? "", identifikator: d?.identifikator ?? "",
-  }
-}
-
-function ContactFields({ defaults, subjekty }: {
-  defaults?: Record<string, string | null> | null
-  subjekty: SubjektItem[]
-}) {
-  const [vals, setVals] = useState<ContactValues>(() => toValues(defaults))
-  const [query, setQuery] = useState("")
-  const [open, setOpen] = useState(false)
-  const dropRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", handler)
-    return () => document.removeEventListener("mousedown", handler)
-  }, [])
-
-  const suggestions = query.trim().length > 0
-    ? subjekty.filter(s => {
-        const q = query.toLowerCase()
-        return [s.meno, s.priezvisko, s.nazov, s.identifikator, s.mesto]
-          .filter(Boolean).some(v => v!.toLowerCase().includes(q))
-      }).slice(0, 8)
-    : []
-
-  function fill(s: SubjektItem) {
-    setVals({
-      meno: s.meno ?? "", priezvisko: s.priezvisko ?? "", nazov: s.nazov ?? "",
-      oddelenie: s.oddelenie ?? "", ulica: s.ulica ?? "", mesto: s.mesto ?? "",
-      psc: s.psc ?? "", identifikator: s.identifikator ?? "",
-    })
-    setQuery(""); setOpen(false)
-  }
-
-  function set(k: keyof ContactValues) {
-    return (e: React.ChangeEvent<HTMLInputElement>) => setVals(v => ({ ...v, [k]: e.target.value }))
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Adresár search */}
-      <div ref={dropRef} className="relative">
-        <div className="relative">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-          <input
-            type="text" value={query}
-            onChange={e => { setQuery(e.target.value); setOpen(true) }}
-            onFocus={() => setOpen(true)}
-            placeholder="Hľadať v adresári…"
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/60 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        {open && suggestions.length > 0 && (
-          <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
-            {suggestions.map(s => {
-              const osobne = [s.meno, s.priezvisko].filter(Boolean).join(" ")
-              return (
-                <button key={s.id} type="button" onClick={() => fill(s)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors">
-                  <p className="font-medium text-gray-900 dark:text-gray-100">{osobne || s.nazov || "—"}</p>
-                  {osobne && s.nazov && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nazov}</p>}
-                  {(s.mesto || s.identifikator) && (
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {[s.mesto, s.identifikator ? `IČO: ${s.identifikator}` : null].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
-                </button>
-              )
-            })}
-          </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>Meno</label>
-          <input type="text" name="meno" value={vals.meno} onChange={set("meno")} className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>Priezvisko</label>
-          <input type="text" name="priezvisko" value={vals.priezvisko} onChange={set("priezvisko")} className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>Názov</label>
-          <input type="text" name="nazov" value={vals.nazov} onChange={set("nazov")} className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>Oddelenie</label>
-          <input type="text" name="oddelenie" value={vals.oddelenie} onChange={set("oddelenie")} className={inputCls} />
-        </div>
-        <div>
-          <label className={labelCls}>Ulica</label>
-          <input type="text" name="ulica" value={vals.ulica} onChange={set("ulica")} className={inputCls} />
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <label className={labelCls}>Mesto</label>
-            <input type="text" name="mesto" value={vals.mesto} onChange={set("mesto")} className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>PSČ</label>
-            <input type="text" name="psc" value={vals.psc} onChange={set("psc")} className={inputCls} />
-          </div>
-        </div>
-        <div>
-          <label className={labelCls}>Identifikátor (IČO apod.)</label>
-          <input type="text" name="identifikator" value={vals.identifikator} onChange={set("identifikator")} className={inputCls} />
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function contactLabel(c: Record<string, string | null>) {
   const parts = [
     [c.meno, c.priezvisko].filter(Boolean).join(" "),
@@ -241,16 +109,14 @@ function contactLabel(c: Record<string, string | null>) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage, isAdmin }: Props) {
+export default function ZaznamDetailClient({ zaznam, utvary, subjekty, spracovatelov, canManage, isAdmin }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
-
-  // Stav change
-  const [showVybavit, setShowVybavit] = useState(false)
-  const [selectedSposob, setSelectedSposob] = useState<SposobVybavenia | "">("")
+  const [editStav, setEditStav] = useState<ZaznamStav>(zaznam.stav)
+  const [editSposob, setEditSposob] = useState<SposobVybavenia | "">(zaznam.sposobVybavenia ?? "")
 
   // Odosielateľ
   const [editingOdos, setEditingOdos] = useState(false)
@@ -269,7 +135,10 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
   const [downloadIntegrity, setDownloadIntegrity] = useState<Record<number, boolean | null>>({})
   const priolohaFileRef = useRef<HTMLInputElement>(null)
 
-  const isEditable = canManage && zaznam.stav !== "V_SPISE" && zaznam.stav !== "VYBAVENY"
+  const isEditable = canManage && zaznam.stav !== "VYBAVENY"
+  const stavOptions: [ZaznamStav, string][] = zaznam.kategoria === "PRIJATY"
+    ? [["PRIDELENY", "Pridelený"], ["V_SPISE", "V spise"], ["VYBAVENY", "Vybavený"]]
+    : [["NOVY", "Vytvorený"], ["V_SPISE", "V spise"], ["VYBAVENY", "Vybavený"]]
   const sposobyVybavenia: SposobVybavenia[] = zaznam.kategoria === "PRIJATY"
     ? ["VZAL_NA_VEDOMIE", "ODPOVEDU"]
     : ["ZALOZENY", "ODOSLANY"]
@@ -281,16 +150,6 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
     setSaving(false)
     if (result.error) { setError(result.error); return }
     setEditing(false)
-    startTransition(() => router.refresh())
-  }
-
-  async function handleVybavit() {
-    if (!selectedSposob) return
-    setSaving(true); setError("")
-    const result = await changeZaznamStav(zaznam.id, "VYBAVENY", selectedSposob as SposobVybavenia)
-    setSaving(false)
-    if (result.error) { setError(result.error); return }
-    setShowVybavit(false)
     startTransition(() => router.refresh())
   }
 
@@ -371,32 +230,24 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
       </Link>
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{zaznam.cisloZaznamu} · {zaznam.rok}</p>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-white mt-0.5">
-            {zaznam.vec ?? zaznam.cisloZaznamu}
-          </h1>
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${zaznamKategoriaColors[zaznam.kategoria]}`}>
-              {zaznam.kategoria === "PRIJATY" ? <Inbox size={11} /> : <Send size={11} />}
-              {zaznamKategoriaLabels[zaznam.kategoria]}
-            </span>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamStavColors[zaznam.stav]}`}>
-              {zaznamStavLabels[zaznam.stav]}
-            </span>
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamDovernostColors[zaznam.dovernost]}`}>
-              {zaznamDovernostLabels[zaznam.dovernost]}
-            </span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">{regZaznamTypeLabels[zaznam.formaZaznamu]}</span>
-          </div>
+      <div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">{zaznam.cisloZaznamu} · {zaznam.rok}</p>
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white mt-0.5">
+          {zaznam.vec ?? zaznam.cisloZaznamu}
+        </h1>
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${zaznamKategoriaColors[zaznam.kategoria]}`}>
+            {zaznam.kategoria === "PRIJATY" ? <Inbox size={11} /> : <Send size={11} />}
+            {zaznamKategoriaLabels[zaznam.kategoria]}
+          </span>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamStavColors[zaznam.stav]}`}>
+            {zaznamStavLabels[zaznam.stav]}
+          </span>
+          <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamDovernostColors[zaznam.dovernost]}`}>
+            {zaznamDovernostLabels[zaznam.dovernost]}
+          </span>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{regZaznamTypeLabels[zaznam.formaZaznamu]}</span>
         </div>
-        {canManage && isEditable && !showVybavit && (
-          <button onClick={() => setShowVybavit(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors shrink-0">
-            <CheckCircle size={15} /> Vybaviť záznam
-          </button>
-        )}
       </div>
 
       {error && (
@@ -405,40 +256,12 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
         </div>
       )}
 
-      {/* Vybaviť panel */}
-      {showVybavit && (
-        <div className="border border-green-200 dark:border-green-700 bg-green-50 dark:bg-green-900/20 rounded-xl p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-green-800 dark:text-green-300">Vybaviť záznam</h3>
-          <div>
-            <label className={labelCls}>Spôsob vybavenia *</label>
-            <select value={selectedSposob} onChange={e => setSelectedSposob(e.target.value as SposobVybavenia)}
-              className={inputCls}>
-              <option value="">— Vyberte —</option>
-              {sposobyVybavenia.map(s => (
-                <option key={s} value={s}>{sposobVybaveniаLabels[s]}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={handleVybavit} disabled={!selectedSposob || saving}
-              className="flex items-center gap-2 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
-              {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle size={14} />}
-              Potvrdiť vybavenie
-            </button>
-            <button onClick={() => setShowVybavit(false)}
-              className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
-              Zrušiť
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* ── Základné informácie ─────────────────────────────────────────────── */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Základné informácie</h2>
           {isEditable && canManage && !editing && (
-            <button onClick={() => { setEditing(true); setError("") }}
+            <button onClick={() => { setEditStav(zaznam.stav); setEditSposob(zaznam.sposobVybavenia ?? ""); setEditing(true); setError("") }}
               className="flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:underline">
               <Pencil size={12} /> Upraviť
             </button>
@@ -448,6 +271,36 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
         {editing ? (
           <form onSubmit={handleSave} className="p-5 space-y-4">
             <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Stav</label>
+                <select name="stav" value={editStav} onChange={e => { setEditStav(e.target.value as ZaznamStav); if (e.target.value !== "VYBAVENY") setEditSposob("") }} className={inputCls}>
+                  {stavOptions.map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
+                </select>
+              </div>
+              {editStav === "VYBAVENY" && (
+                <div>
+                  <label className={labelCls}>Spôsob vybavenia *</label>
+                  <select name="sposobVybavenia" value={editSposob} onChange={e => setEditSposob(e.target.value as SposobVybavenia)} className={inputCls}>
+                    <option value="">— Vyberte —</option>
+                    {sposobyVybavenia.map(s => <option key={s} value={s}>{sposobVybaveniаLabels[s]}</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className={labelCls}>Spracovateľ</label>
+                {isAdmin ? (
+                  <select name="spracovatelId" defaultValue={zaznam.spracovatelId} className={inputCls}>
+                    {spracovatelov.map(u => (
+                      <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-800 dark:text-gray-200 py-2">{zaznam.spracovatel}</p>
+                    <input type="hidden" name="spracovatelId" value={zaznam.spracovatelId} />
+                  </>
+                )}
+              </div>
               <div>
                 <label className={labelCls}>Rok</label>
                 <input type="number" name="rok" defaultValue={zaznam.rok} className={inputCls} min={2000} max={2100} />
@@ -474,17 +327,6 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
                   <option value="DOVERNE">Dôverné</option>
                 </select>
               </div>
-              {zaznam.stav === "VYBAVENY" && (
-                <div>
-                  <label className={labelCls}>Spôsob vybavenia</label>
-                  <select name="sposobVybavenia" defaultValue={zaznam.sposobVybavenia ?? ""} className={inputCls}>
-                    <option value="">—</option>
-                    {sposobyVybavenia.map(s => (
-                      <option key={s} value={s}>{sposobVybaveniаLabels[s]}</option>
-                    ))}
-                  </select>
-                </div>
-              )}
             </div>
             <div>
               <label className={labelCls}>Vec</label>
@@ -501,7 +343,7 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
                 {saving ? <Loader2 size={13} className="animate-spin" /> : null}
                 {saving ? "Ukladám…" : "Uložiť"}
               </button>
-              <button type="button" onClick={() => setEditing(false)}
+              <button type="button" onClick={() => { setEditing(false); setEditStav(zaznam.stav); setEditSposob(zaznam.sposobVybavenia ?? "") }}
                 className="px-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
                 Zrušiť
               </button>
@@ -510,14 +352,19 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
         ) : (
           <dl className="p-5 grid grid-cols-2 md:grid-cols-3 gap-x-8 gap-y-4">
             <Field label="Číslo záznamu"><span className="font-mono">{zaznam.cisloZaznamu}</span></Field>
-            <Field label="Rok">{zaznam.rok}</Field>
-            <Field label="Forma záznamu">{regZaznamTypeLabels[zaznam.formaZaznamu]}</Field>
-            <Field label="Spracovateľ">{zaznam.spracovatel}</Field>
-            {zaznam.utvar && <Field label="Útvar">{zaznam.utvar.nazov}</Field>}
+            <Field label="Stav">
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamStavColors[zaznam.stav]}`}>
+                {zaznamStavLabels[zaznam.stav]}
+              </span>
+            </Field>
             {zaznam.sposobVybavenia && (
               <Field label="Spôsob vybavenia">{sposobVybaveniаLabels[zaznam.sposobVybavenia]}</Field>
             )}
-            {zaznam.vec && <Field label="Vec" >{zaznam.vec}</Field>}
+            <Field label="Spracovateľ">{zaznam.spracovatel}</Field>
+            <Field label="Rok">{zaznam.rok}</Field>
+            <Field label="Forma záznamu">{regZaznamTypeLabels[zaznam.formaZaznamu]}</Field>
+            {zaznam.utvar && <Field label="Útvar">{zaznam.utvar.nazov}</Field>}
+            {zaznam.vec && <Field label="Vec">{zaznam.vec}</Field>}
             {zaznam.popis && <Field label="Popis"><span className="whitespace-pre-wrap">{zaznam.popis}</span></Field>}
             {zaznam.posta && (
               <Field label="Pošta">
@@ -659,6 +506,15 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage
           </div>
         </div>
       )}
+
+      {/* ── Osoby s prístupom ───────────────────────────────────────────────── */}
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <User size={15} className="text-gray-500" />
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Osoby s prístupom</h2>
+        </div>
+        <p className="px-5 py-4 text-sm text-gray-400 dark:text-gray-500">Žiadne osoby s prístupom.</p>
+      </div>
 
       {/* ── Prílohy ─────────────────────────────────────────────────────────── */}
       <div className="border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900">

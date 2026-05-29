@@ -653,6 +653,7 @@ model Utvar {
   nazov     String      @unique
   users     UserUtvar[]
   zaznamy   RegZaznam[]
+  spisy     Spis[]
   createdAt DateTime    @default(now())
 }
 
@@ -732,6 +733,8 @@ enum ZaznamDovernost {
 
 enum SpisStatus {
   OTVORENY
+  ODLOZENY
+  VYBAVENY
   UZATVORENY
 }
 
@@ -870,6 +873,10 @@ model Spis {
   id               Int               @id @default(autoincrement())
   cisloSpisu       String            @unique
   nazov            String
+  rok              Int               @default(2026)
+  popis            String?
+  utvarId          Int?
+  utvar            Utvar?            @relation(fields: [utvarId], references: [id])
   planId           Int
   plan             RegistraturnyPlan @relation(fields: [planId], references: [id])
   spracovatelId    Int

@@ -25,6 +25,7 @@ type SpisRow = {
 interface Props {
   spisy: SpisRow[]
   plans: { id: number; znacka: string; nazov: string; lehota: number; maArchivnu: boolean }[]
+  utvary: { id: number; nazov: string }[]
   isAdmin: boolean
   canCreate: boolean
 }
@@ -50,7 +51,7 @@ function Th({ label, colKey, sortKey, sortDir, onSort }: {
   )
 }
 
-export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props) {
+export default function SpisyClient({ spisy, plans, utvary, isAdmin, canCreate }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
@@ -221,10 +222,18 @@ export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props)
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov spisu *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Vec *</label>
                 <input type="text" name="nazov" required
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Napr. Zmluvy o dielo 2026" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Útvar</label>
+                <select name="utvarId"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                  <option value="">— Bez útvaru —</option>
+                  {utvary.map(u => <option key={u.id} value={u.id}>{u.nazov}</option>)}
+                </select>
               </div>
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">

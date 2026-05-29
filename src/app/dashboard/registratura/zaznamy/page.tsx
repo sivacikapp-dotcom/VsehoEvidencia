@@ -16,7 +16,7 @@ export default async function ZaznamyPage() {
 
   const whereClause = isAdmin ? {} : { spracovatelId: userId }
 
-  const [zaznamyRaw, utvary] = await Promise.all([
+  const [zaznamyRaw, utvary, subjekty] = await Promise.all([
     prisma.regZaznam.findMany({
       where: whereClause,
       orderBy: { createdAt: "desc" },
@@ -27,6 +27,7 @@ export default async function ZaznamyPage() {
       },
     }),
     prisma.utvar.findMany({ orderBy: { nazov: "asc" } }),
+    prisma.subjekt.findMany({ orderBy: [{ priezvisko: "asc" }, { nazov: "asc" }] }),
   ])
 
   const zaznamy = zaznamyRaw.map(z => ({
@@ -52,6 +53,11 @@ export default async function ZaznamyPage() {
       <ZaznamyClient
         zaznamy={zaznamy}
         utvary={utvary.map(u => ({ id: u.id, nazov: u.nazov }))}
+        subjekty={subjekty.map(s => ({
+          id: s.id, meno: s.meno, priezvisko: s.priezvisko, nazov: s.nazov,
+          oddelenie: s.oddelenie, ulica: s.ulica, mesto: s.mesto, psc: s.psc,
+          identifikator: s.identifikator,
+        }))}
         isAdmin={isAdmin}
         canCreate={canCreate}
       />

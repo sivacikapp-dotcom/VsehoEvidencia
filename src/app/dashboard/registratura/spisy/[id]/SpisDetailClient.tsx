@@ -2,30 +2,30 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Pencil, X, Check, Trash2, Plus, FolderOpen, Lock, FileText, ExternalLink, AlertTriangle } from "lucide-react"
-import { regZaznamTypeLabels, zaznamStavLabels, zaznamStavColors, zaznamKategoriaLabels, spisStatusLabels, spisStatusColors } from "@/lib/regLabels"
+import {
+  ArrowLeft, Pencil, X, Check, Trash2, Plus, FileText,
+  ExternalLink, User, Layers,
+} from "lucide-react"
+import {
+  regZaznamTypeLabels, zaznamStavLabels, zaznamStavColors, zaznamKategoriaLabels,
+  spisStatusLabels, spisStatusColors, zaznamDovernostLabels, zaznamDovernostColors,
+} from "@/lib/regLabels"
 import type { RegZaznamType, ZaznamStav, ZaznamKategoria, SpisStatus } from "@/generated/prisma/enums"
-import { updateSpis, addZaznamToSpis, removeZaznamFromSpis, uzatvoritSpis } from "../actions"
+import { updateSpis, addZaznamToSpis, removeZaznamFromSpis } from "../actions"
+
+const inputCls = "w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+const labelCls = "block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1"
 
 type ZaznamInSpis = {
-  id: number
-  cisloZaznamu: string
-  formaZaznamu: RegZaznamType
-  stav: ZaznamStav
-  kategoria: ZaznamKategoria
-  planZnacka: string
-  planNazov: string
-  addedAt: string
+  id: number; cisloZaznamu: string; formaZaznamu: RegZaznamType
+  stav: ZaznamStav; kategoria: ZaznamKategoria
+  planZnacka: string; planNazov: string; addedAt: string
 }
 
 type AvailableZaznam = {
-  id: number
-  cisloZaznamu: string
-  formaZaznamu: RegZaznamType
-  stav: ZaznamStav
-  kategoria: ZaznamKategoria
-  planZnacka: string
-  planNazov: string
+  id: number; cisloZaznamu: string; formaZaznamu: RegZaznamType
+  stav: ZaznamStav; kategoria: ZaznamKategoria
+  planZnacka: string; planNazov: string
 }
 
 interface Props {
@@ -33,36 +33,59 @@ interface Props {
     id: number
     cisloSpisu: string
     nazov: string
+    rok: number
+    popis: string | null
+    utvar: { id: number; nazov: string } | null
     plan: { id: number; znacka: string; nazov: string; lehota: number }
+    spracovatelId: number
     spracovatel: string
     status: SpisStatus
     datumOtvorenia: string
     datumUzatvorenia: string | null
     rokVyradenia: number | null
+    forma: "ELEKTRONICKY" | "NEELEKTRONICKY" | "KOMBINOVANY" | null
+    dovernost: "VEREJNE" | "INTERNE" | "DOVERNE" | null
     zaznamy: ZaznamInSpis[]
   }
   plans: { id: number; znacka: string; nazov: string }[]
+  spracovatelov: { id: number; firstName: string; lastName: string }[]
+  utvary: { id: number; nazov: string }[]
   availableZaznamy: AvailableZaznam[]
   canManage: boolean
   isAdmin: boolean
 }
 
-export default function SpisDetailClient({ spis, plans, availableZaznamy, canManage, isAdmin }: Props) {
+const FORMA_LABELS: Record<string, string> = {
+  ELEKTRONICKY: "Elektronická",
+  NEELEKTRONICKY: "Neelektronická",
+  KOMBINOVANY: "Kombinovaná",
+}
+
+const CLOSED: SpisStatus[] = ["VYBAVENY", "UZATVORENY"]
+
+function DField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{label}</dt>
+      <dd className="text-sm text-gray-900 dark:text-white">{children}</dd>
+    </div>
+  )
+}
+
+export default function SpisDetailClient({ spis, plans, spracovatelov, utvary, availableZaznamy, canManage, isAdmin }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [editStatus, setEditStatus] = useState<SpisStatus>(spis.status)
   const [showAddZaznam, setShowAddZaznam] = useState(false)
   const [addSearch, setAddSearch] = useState("")
   const [addError, setAddError] = useState("")
   const [addingSaving, setAddingSaving] = useState(false)
-  const [showCloseConfirm, setShowCloseConfirm] = useState(false)
-  const [closingError, setClosingError] = useState("")
-  const [closingSaving, setClosingSaving] = useState(false)
 
-  const isOpen = spis.status === "OTVORENY"
-  const canEdit = canManage && isOpen
+  const isClosed = CLOSED.includes(spis.status)
+  const canEdit = canManage && !isClosed
 
   async function handleSave(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -89,15 +112,6 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
     startTransition(() => router.refresh())
   }
 
-  async function handleClose() {
-    setClosingSaving(true); setClosingError("")
-    const result = await uzatvoritSpis(spis.id)
-    setClosingSaving(false)
-    if (result.error) { setClosingError(result.error); return }
-    setShowCloseConfirm(false)
-    startTransition(() => router.refresh())
-  }
-
   const filteredAvailable = availableZaznamy.filter(z => {
     if (!addSearch) return true
     const q = addSearch.toLowerCase()
@@ -120,38 +134,68 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
           </div>
           <p className="text-sm font-mono text-gray-500 dark:text-gray-400 mt-0.5">{spis.cisloSpisu}</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {canEdit && !editing && (
-            <button onClick={() => { setEditing(true); setError("") }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300">
-              <Pencil size={14} /> Upraviť
-            </button>
-          )}
-          {canEdit && (
-            <button onClick={() => { setShowCloseConfirm(true); setClosingError("") }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors">
-              <Lock size={14} /> Uzatvoriť spis
-            </button>
-          )}
-        </div>
+        {canEdit && !editing && (
+          <button onClick={() => { setEditStatus(spis.status); setEditing(true); setError("") }}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-700 dark:text-gray-300">
+            <Pencil size={14} /> Upraviť
+          </button>
+        )}
       </div>
+
+      {error && <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">{error}</p>}
 
       {/* Meta info / Edit form */}
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
         {editing ? (
           <form onSubmit={handleSave} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Vec *</label>
+                <input type="text" name="nazov" required defaultValue={spis.nazov} className={inputCls} placeholder="Stručný predmet spisu" />
+              </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Registratúrny plán *</label>
-                <select name="planId" required defaultValue={spis.plan.id}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <label className={labelCls}>Stav</label>
+                <select name="status" value={editStatus} onChange={e => setEditStatus(e.target.value as SpisStatus)} className={inputCls}>
+                  <option value="OTVORENY">Otvorený</option>
+                  <option value="ODLOZENY">Odložený</option>
+                  <option value="VYBAVENY">Vybavený</option>
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Rok</label>
+                <input type="number" name="rok" defaultValue={spis.rok} min={2000} max={2100} className={inputCls} />
+              </div>
+              <div>
+                <label className={labelCls}>Reg. značka *</label>
+                <select name="planId" required defaultValue={spis.plan.id} className={inputCls}>
                   {plans.map(p => <option key={p.id} value={p.id}>{p.znacka} – {p.nazov}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov spisu *</label>
-                <input type="text" name="nazov" required defaultValue={spis.nazov}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <label className={labelCls}>Útvar</label>
+                <select name="utvarId" defaultValue={spis.utvar?.id ?? ""} className={inputCls}>
+                  <option value="">— Bez útvaru —</option>
+                  {utvary.map(u => <option key={u.id} value={u.id}>{u.nazov}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Spracovateľ</label>
+                {isAdmin ? (
+                  <select name="spracovatelId" defaultValue={spis.spracovatelId} className={inputCls}>
+                    {spracovatelov.map(u => (
+                      <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-800 dark:text-gray-200 py-2">{spis.spracovatel}</p>
+                    <input type="hidden" name="spracovatelId" value={spis.spracovatelId} />
+                  </>
+                )}
+              </div>
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Popis</label>
+                <textarea name="popis" defaultValue={spis.popis ?? ""} rows={3} className={`${inputCls} resize-none`} placeholder="Podrobnejší popis spisu..." />
               </div>
             </div>
             {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -160,7 +204,7 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
                 className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
                 <Check size={14} /> {saving ? "Ukladám…" : "Uložiť"}
               </button>
-              <button type="button" onClick={() => setEditing(false)}
+              <button type="button" onClick={() => { setEditing(false); setEditStatus(spis.status) }}
                 className="flex items-center gap-1.5 px-4 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-gray-600 dark:text-gray-300">
                 <X size={14} /> Zrušiť
               </button>
@@ -168,35 +212,39 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
           </form>
         ) : (
           <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 text-sm">
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Registratúrny plán</dt>
-              <dd className="font-medium text-gray-900 dark:text-white">{spis.plan.znacka}</dd>
-              <dd className="text-xs text-gray-500">{spis.plan.nazov}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Spracovateľ</dt>
-              <dd className="text-gray-900 dark:text-white">{spis.spracovatel}</dd>
-            </div>
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Dátum otvorenia</dt>
-              <dd className="text-gray-900 dark:text-white">{spis.datumOtvorenia}</dd>
-            </div>
-            {spis.datumUzatvorenia && (
-              <div>
-                <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Dátum uzatvorenia</dt>
-                <dd className="text-gray-900 dark:text-white">{spis.datumUzatvorenia}</dd>
+            <DField label="Vec">{spis.nazov}</DField>
+            <DField label="Stav">
+              <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${spisStatusColors[spis.status]}`}>
+                {spisStatusLabels[spis.status]}
+              </span>
+            </DField>
+            <DField label="Rok">{spis.rok}</DField>
+            <DField label="Reg. značka">
+              <span className="font-medium">{spis.plan.znacka}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400 block">{spis.plan.nazov}</span>
+            </DField>
+            {spis.utvar && <DField label="Útvar">{spis.utvar.nazov}</DField>}
+            <DField label="Spracovateľ">{spis.spracovatel}</DField>
+            <DField label="Forma">
+              {spis.forma
+                ? FORMA_LABELS[spis.forma]
+                : <span className="text-gray-400 dark:text-gray-500 italic">Zo záznamov</span>}
+            </DField>
+            <DField label="Stupeň dôvernosti">
+              {spis.dovernost
+                ? <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${zaznamDovernostColors[spis.dovernost]}`}>{zaznamDovernostLabels[spis.dovernost]}</span>
+                : <span className="text-gray-400 dark:text-gray-500 italic">Zo záznamov</span>}
+            </DField>
+            <DField label="Lehota uchovávania">{spis.plan.lehota} {spis.plan.lehota === 1 ? "rok" : "rokov"}</DField>
+            <DField label="Dátum otvorenia">{spis.datumOtvorenia}</DField>
+            {spis.datumUzatvorenia && <DField label="Dátum vybavenia">{spis.datumUzatvorenia}</DField>}
+            {spis.rokVyradenia && <DField label="Rok vyradenia"><span className="font-medium">{spis.rokVyradenia}</span></DField>}
+            {spis.popis && (
+              <div className="sm:col-span-3">
+                <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Popis</dt>
+                <dd className="text-sm text-gray-900 dark:text-white whitespace-pre-wrap">{spis.popis}</dd>
               </div>
             )}
-            {spis.rokVyradenia && (
-              <div>
-                <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Rok vyradenia</dt>
-                <dd className="font-medium text-gray-900 dark:text-white">{spis.rokVyradenia}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Lehota uchovávania</dt>
-              <dd className="text-gray-900 dark:text-white">{spis.plan.lehota} {spis.plan.lehota === 1 ? "rok" : "rokov"}</dd>
-            </div>
           </dl>
         )}
       </div>
@@ -269,9 +317,14 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
         )}
       </div>
 
-      {error && (
-        <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg">{error}</p>
-      )}
+      {/* Osoby s prístupom */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <User size={15} className="text-gray-500" />
+          <h2 className="font-medium text-gray-900 dark:text-white text-sm">Osoby s prístupom</h2>
+        </div>
+        <p className="px-5 py-4 text-sm text-gray-400 dark:text-gray-500">Žiadne osoby s prístupom.</p>
+      </div>
 
       {/* Add Záznam Modal */}
       {showAddZaznam && (
@@ -282,11 +335,9 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
               <button onClick={() => setShowAddZaznam(false)}><X size={18} className="text-gray-400" /></button>
             </div>
             <div className="p-4 border-b border-gray-100 dark:border-gray-800">
-              <div className="relative">
-                <input value={addSearch} onChange={e => setAddSearch(e.target.value)}
-                  placeholder="Hľadať záznamy..."
-                  className="w-full pl-3 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
+              <input value={addSearch} onChange={e => setAddSearch(e.target.value)}
+                placeholder="Hľadať záznamy..."
+                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
               {filteredAvailable.length === 0 ? (
@@ -313,39 +364,6 @@ export default function SpisDetailClient({ spis, plans, availableZaznamy, canMan
               <button onClick={() => setShowAddZaznam(false)}
                 className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                 Zatvoriť
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Close Spis Confirm Modal */}
-      {showCloseConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg shrink-0">
-                <AlertTriangle size={18} className="text-amber-600 dark:text-amber-400" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white">Uzatvoriť spis</h2>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  Uzatvorenie spisu je nevratné. Rok vyradenia bude nastavený automaticky podľa registratúrneho plánu.
-                  Všetky záznamy musia byť uzavreté alebo vyradené.
-                </p>
-              </div>
-            </div>
-            {closingError && (
-              <p className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{closingError}</p>
-            )}
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowCloseConfirm(false)}
-                className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                Zrušiť
-              </button>
-              <button onClick={handleClose} disabled={closingSaving}
-                className="px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
-                {closingSaving ? "Uzatváram…" : "Potvrdiť uzatvorenie"}
               </button>
             </div>
           </div>

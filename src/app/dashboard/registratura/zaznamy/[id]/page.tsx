@@ -33,9 +33,14 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
 
   if (!isAdmin && zaznam.spracovatelId !== userId) redirect("/dashboard/registratura/zaznamy")
 
-  const [utvary, subjekty] = await Promise.all([
+  const [utvary, subjekty, spracovatelov] = await Promise.all([
     prisma.utvar.findMany({ orderBy: { nazov: "asc" } }),
     prisma.subjekt.findMany({ orderBy: [{ priezvisko: "asc" }, { nazov: "asc" }] }),
+    prisma.user.findMany({
+      where: { roles: { has: "SPRACOVATEL_REGISTRATURY" } },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: { lastName: "asc" },
+    }),
   ])
 
   const canManage = (isSpracovatel && zaznam.spracovatelId === userId) ||
@@ -49,6 +54,7 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
           cisloZaznamu: zaznam.cisloZaznamu,
           kategoria: zaznam.kategoria,
           rok: zaznam.rok,
+          spracovatelId: zaznam.spracovatelId,
           spracovatel: `${zaznam.spracovatel.firstName} ${zaznam.spracovatel.lastName}`,
           utvar: zaznam.utvar ? { id: zaznam.utvar.id, nazov: zaznam.utvar.nazov } : null,
           formaZaznamu: zaznam.formaZaznamu,
@@ -85,6 +91,7 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
           oddelenie: s.oddelenie, ulica: s.ulica, mesto: s.mesto, psc: s.psc,
           identifikator: s.identifikator,
         }))}
+        spracovatelov={spracovatelov}
         canManage={canManage}
         isAdmin={isAdmin}
       />

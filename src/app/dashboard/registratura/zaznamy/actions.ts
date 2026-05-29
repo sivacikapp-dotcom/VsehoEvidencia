@@ -42,6 +42,18 @@ export async function createZaznam(formData: FormData): Promise<Result> {
   const utvarIdRaw = formData.get("utvarId") as string
   const utvarId = utvarIdRaw ? parseInt(utvarIdRaw) : null
 
+  const kontakt = {
+    meno:          (formData.get("meno") as string)?.trim() || null,
+    priezvisko:    (formData.get("priezvisko") as string)?.trim() || null,
+    nazov:         (formData.get("nazov") as string)?.trim() || null,
+    oddelenie:     (formData.get("oddelenie") as string)?.trim() || null,
+    ulica:         (formData.get("ulica") as string)?.trim() || null,
+    mesto:         (formData.get("mesto") as string)?.trim() || null,
+    psc:           (formData.get("psc") as string)?.trim() || null,
+    identifikator: (formData.get("identifikator") as string)?.trim() || null,
+  }
+  const hasKontakt = Object.values(kontakt).some(Boolean)
+
   const rok = currentYear()
   const cisloZaznamu = await nextZaznamNumber(rok)
   const stav: ZaznamStav = kategoria === "PRIJATY" ? "PRIDELENY" : "NOVY"
@@ -62,6 +74,15 @@ export async function createZaznam(formData: FormData): Promise<Result> {
         createdById: parseInt(session.user.id),
       },
     })
+
+    if (hasKontakt) {
+      if (kategoria === "PRIJATY") {
+        await prisma.zaznamOdosielatel.create({ data: { zaznamId: created.id, ...kontakt } })
+      } else {
+        await prisma.zaznamAdresat.create({ data: { zaznamId: created.id, poradie: 0, ...kontakt } })
+      }
+    }
+
     await createAuditLog({
       userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
       action: "CREATE", entityType: "REG_ZAZNAM", entityId: created.id,
@@ -99,12 +120,18 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
   const utvarId = utvarIdRaw ? parseInt(utvarIdRaw) : null
   const rokRaw = formData.get("rok") as string
   const rok = rokRaw ? parseInt(rokRaw) : zaznam.rok
-
-  // Spôsob vybavenia — only when stav = VYBAVENY
+  const stavRaw = formData.get("stav") as string
+  const stav = (stavRaw as ZaznamStav) || zaznam.stav
+  const spracovatelIdRaw = formData.get("spracovatelId") as string
+  const spracovatelId = spracovatelIdRaw ? parseInt(spracovatelIdRaw) : zaznam.spracovatelId
   const sposobRaw = formData.get("sposobVybavenia") as string
-  const sposobVybavenia: SposobVybavenia | null = sposobRaw
+  const sposobVybavenia: SposobVybavenia | null = stav === "VYBAVENY" && sposobRaw
     ? (sposobRaw as SposobVybavenia)
     : null
+
+  if (stav === "VYBAVENY" && !sposobVybavenia) {
+    return { error: "Pre stav Vybavený je potrebné vybrať spôsob vybavenia." }
+  }
 
   try {
     await prisma.regZaznam.update({
@@ -115,6 +142,8 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
         popis,
         dovernost,
         rok,
+        stav,
+        spracovatelId: !isNaN(spracovatelId) ? spracovatelId : zaznam.spracovatelId,
         utvarId: utvarId && !isNaN(utvarId) ? utvarId : null,
         sposobVybavenia,
       },

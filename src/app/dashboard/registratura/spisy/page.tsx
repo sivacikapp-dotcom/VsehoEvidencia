@@ -16,7 +16,7 @@ export default async function SpisyPage() {
 
   const whereClause = isAdmin ? {} : { spracovatelId: userId }
 
-  const [spisyRaw, plans] = await Promise.all([
+  const [spisyRaw, plans, utvary] = await Promise.all([
     prisma.spis.findMany({
       where: whereClause,
       orderBy: { datumOtvorenia: "desc" },
@@ -27,6 +27,7 @@ export default async function SpisyPage() {
       },
     }),
     prisma.registraturnyPlan.findMany({ orderBy: { znacka: "asc" }, select: { id: true, znacka: true, nazov: true, lehota: true, maArchivnu: true } }),
+    prisma.utvar.findMany({ orderBy: { nazov: "asc" }, select: { id: true, nazov: true } }),
   ])
 
   const spisy = spisyRaw.map(s => ({
@@ -47,7 +48,8 @@ export default async function SpisyPage() {
     <div className="flex-1 overflow-auto">
       <SpisyClient
         spisy={spisy}
-        plans={plans.map(p => ({ id: p.id, znacka: p.znacka, nazov: p.nazov }))}
+        plans={plans.map(p => ({ id: p.id, znacka: p.znacka, nazov: p.nazov, lehota: p.lehota, maArchivnu: p.maArchivnu }))}
+        utvary={utvary}
         isAdmin={isAdmin}
         canCreate={isSpracovatel}
       />
