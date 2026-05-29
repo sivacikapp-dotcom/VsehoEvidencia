@@ -60,6 +60,7 @@ export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props)
   const [showNew, setShowNew] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+  const [selectedPlanId, setSelectedPlanId] = useState<number | null>(null)
 
   function handleSort(k: SortKey) {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -111,7 +112,7 @@ export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props)
           </p>
         </div>
         {canCreate && (
-          <button onClick={() => { setShowNew(true); setError("") }}
+          <button onClick={() => { setShowNew(true); setError(""); setSelectedPlanId(null) }}
             className="flex items-center gap-2 px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors">
             <Plus size={15} /> Nový spis
           </button>
@@ -206,16 +207,18 @@ export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props)
           <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="font-semibold text-gray-900 dark:text-white">Nový spis</h2>
-              <button onClick={() => setShowNew(false)}><X size={18} className="text-gray-400" /></button>
+              <button onClick={() => { setShowNew(false); setSelectedPlanId(null) }}><X size={18} className="text-gray-400" /></button>
             </div>
             <form onSubmit={handleCreate} className="p-6 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Registratúrny plán *</label>
-                <select name="planId" required
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  <option value="">— Vyberte —</option>
-                  {plans.map(p => <option key={p.id} value={p.id}>{p.znacka} – {p.nazov}</option>)}
-                </select>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Registratúrna značka *</label>
+                <PlanTreePicker
+                  items={plans}
+                  value={selectedPlanId}
+                  onChange={setSelectedPlanId}
+                  name="planId"
+                  required
+                />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov spisu *</label>
@@ -225,7 +228,7 @@ export default function SpisyClient({ spisy, plans, isAdmin, canCreate }: Props)
               </div>
               {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
               <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowNew(false)}
+                <button type="button" onClick={() => { setShowNew(false); setSelectedPlanId(null) }}
                   className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
                   Zrušiť
                 </button>

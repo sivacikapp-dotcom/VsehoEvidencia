@@ -2,8 +2,9 @@
 
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, X, Loader2, Pencil, Trash2 } from "lucide-react"
-import { createUser, updateUser, deleteUser } from "./actions"
+import Link from "next/link"
+import { Plus, X, Loader2, Trash2 } from "lucide-react"
+import { createUser, deleteUser } from "./actions"
 import type { Role } from "@/generated/prisma/enums"
 
 const ROLE_GROUPS: { label: string; roles: { value: Role; label: string }[] }[] = [
@@ -223,79 +224,10 @@ function NewUserModal({ users, onClose }: { users: User[]; onClose: () => void }
   )
 }
 
-// ── Edit User Modal ────────────────────────────────────────────────────────
-function EditUserModal({ user, allUsers, onClose }: { user: User; allUsers: User[]; onClose: () => void }) {
-  const router = useRouter()
-  const [roles, setRoles] = useState<Role[]>(user.roles)
-  const [supervisorId, setSupervisorId] = useState<string>(user.supervisorId ? String(user.supervisorId) : "")
-  const [pending, setPending] = useState(false)
-  const [error, setError] = useState("")
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setPending(true)
-    setError("")
-
-    const result = await updateUser(user.id, roles, supervisorId ? parseInt(supervisorId) : null)
-    setPending(false)
-    if (result.error) setError(result.error)
-    else { router.refresh(); onClose() }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Upraviť používateľa</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{user.lastName} {user.firstName}</p>
-          </div>
-          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit}>
-          <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-y-auto">
-            <Field label="Role" required>
-              <RoleCheckboxes selected={roles} onChange={setRoles} />
-            </Field>
-            <Field label="Nadriadený">
-              <select value={supervisorId} onChange={(e) => setSupervisorId(e.target.value)} className={inputCls}>
-                <option value="">— bez nadriadeného —</option>
-                {allUsers.filter((u) => u.id !== user.id).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.lastName} {u.firstName}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-
-          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between">
-            {error ? <p className="text-sm text-red-600 dark:text-red-400 flex-1">{error}</p> : <span />}
-            <div className="flex gap-2">
-              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
-                Zrušiť
-              </button>
-              <button type="submit" disabled={pending} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
-                {pending && <Loader2 size={14} className="animate-spin" />}
-                {pending ? "Ukladám..." : "Uložiť"}
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
 // ── Main Component ─────────────────────────────────────────────────────────
 export default function UsersClient({ users, canManage = false }: { users: User[]; canManage?: boolean }) {
   const router = useRouter()
   const [showNew, setShowNew] = useState(false)
-  const [editUser, setEditUser] = useState<User | null>(null)
   const [deletingId, setDeletingId] = useState<number | null>(null)
 
   async function handleDelete(u: User) {
@@ -342,7 +274,9 @@ export default function UsersClient({ users, canManage = false }: { users: User[
               <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
                 <td className="px-4 py-3 text-xs font-mono text-gray-400 dark:text-gray-500">{u.id}</td>
                 <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                  {u.lastName} {u.firstName}
+                  <Link href={`/dashboard/users/${u.id}`} className="hover:text-blue-600 dark:hover:text-blue-400 hover:underline transition-colors">
+                    {u.lastName} {u.firstName}
+                  </Link>
                 </td>
                 <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{u.email}</td>
                 <td className="px-4 py-3">
@@ -360,20 +294,14 @@ export default function UsersClient({ users, canManage = false }: { users: User[
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-1">
                     {canManage && (
-                      <>
-                        <button onClick={() => setEditUser(u)} className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md font-medium">
-                          <Pencil size={11} />
-                          Upraviť
-                        </button>
-                        <button
-                          onClick={() => handleDelete(u)}
-                          disabled={deletingId === u.id}
-                          className="flex items-center gap-1 px-2 py-1 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md font-medium disabled:opacity-50"
-                        >
-                          {deletingId === u.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
-                          Zmazať
-                        </button>
-                      </>
+                      <button
+                        onClick={() => handleDelete(u)}
+                        disabled={deletingId === u.id}
+                        className="flex items-center gap-1 px-2 py-1 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md font-medium disabled:opacity-50"
+                      >
+                        {deletingId === u.id ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+                        Zmazať
+                      </button>
                     )}
                   </div>
                 </td>
@@ -391,7 +319,6 @@ export default function UsersClient({ users, canManage = false }: { users: User[
       </div>
 
       {showNew && <NewUserModal users={users} onClose={() => setShowNew(false)} />}
-      {editUser && <EditUserModal user={editUser} allUsers={users} onClose={() => setEditUser(null)} />}
     </div>
   )
 }

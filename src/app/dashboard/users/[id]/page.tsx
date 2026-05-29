@@ -13,6 +13,7 @@ export default async function UserCardPage({
   if (!session) redirect("/login")
 
   const roles = session.user.roles
+  const callerRoles = (session.user as { roles?: string[] })?.roles ?? []
   const isManager = roles.includes("SPRAVCA_MAJETKU")
   const isSupervisorRole = roles.includes("NADRIADENY")
   const canViewAll =
@@ -29,7 +30,7 @@ export default async function UserCardPage({
   const userId = parseInt(id)
   if (isNaN(userId)) notFound()
 
-  const [user, allRooms] = await Promise.all([
+  const [user, allRooms, allUtvary, allUsers] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
       include: {
@@ -55,6 +56,9 @@ export default async function UserCardPage({
             room: { select: { id: true, name: true } },
           },
         },
+        utvary: {
+          include: { utvar: { select: { id: true, nazov: true } } },
+        },
       },
     }),
     isManager
@@ -62,6 +66,12 @@ export default async function UserCardPage({
           select: { id: true, name: true },
           orderBy: { name: "asc" },
         })
+      : Promise.resolve([]),
+    callerRoles.includes("SPRAVCA_APLIKACIE")
+      ? prisma.utvar.findMany({ select: { id: true, nazov: true }, orderBy: { nazov: "asc" } })
+      : Promise.resolve([]),
+    callerRoles.includes("SPRAVCA_APLIKACIE")
+      ? prisma.user.findMany({ select: { id: true, firstName: true, lastName: true }, orderBy: { lastName: "asc" } })
       : Promise.resolve([]),
   ])
 
@@ -94,6 +104,11 @@ export default async function UserCardPage({
     roomName: ra.room.name,
   }))
 
+  const userUtvary = user.utvary.map((uu) => ({
+    utvarId: uu.utvar.id,
+    utvarNazov: uu.utvar.nazov,
+  }))
+
   return (
     <div className="flex-1 overflow-auto p-8">
       <UserCardClient
@@ -103,6 +118,7 @@ export default async function UserCardPage({
           lastName: user.lastName,
           email: user.email,
           roles: user.roles,
+          supervisorId: user.supervisorId,
           supervisorName: user.supervisor
             ? `${user.supervisor.firstName} ${user.supervisor.lastName}`
             : null,
@@ -110,6 +126,10 @@ export default async function UserCardPage({
         assignments={assignments}
         roomAccesses={roomAccesses}
         allRooms={isManager ? allRooms : []}
+        utvary={userUtvary}
+        allUtvary={allUtvary}
+        allUsers={allUsers}
+        isAdmin={callerRoles.includes("SPRAVCA_APLIKACIE")}
         viewerUserId={parseInt(session.user.id)}
         viewerName={session.user.name}
         isManager={isManager}

@@ -33,7 +33,10 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
 
   if (!isAdmin && zaznam.spracovatelId !== userId) redirect("/dashboard/registratura/zaznamy")
 
-  const utvary = await prisma.utvar.findMany({ orderBy: { nazov: "asc" } })
+  const [utvary, subjekty] = await Promise.all([
+    prisma.utvar.findMany({ orderBy: { nazov: "asc" } }),
+    prisma.subjekt.findMany({ orderBy: [{ priezvisko: "asc" }, { nazov: "asc" }] }),
+  ])
 
   const canManage = (isSpracovatel && zaznam.spracovatelId === userId) ||
     (isAdmin && !roles.includes("SPRAVCA_APLIKACIE"))
@@ -77,6 +80,11 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
           updatedAt: zaznam.updatedAt.toISOString().split("T")[0],
         }}
         utvary={utvary.map(u => ({ id: u.id, nazov: u.nazov }))}
+        subjekty={subjekty.map(s => ({
+          id: s.id, meno: s.meno, priezvisko: s.priezvisko, nazov: s.nazov,
+          oddelenie: s.oddelenie, ulica: s.ulica, mesto: s.mesto, psc: s.psc,
+          identifikator: s.identifikator,
+        }))}
         canManage={canManage}
         isAdmin={isAdmin}
       />

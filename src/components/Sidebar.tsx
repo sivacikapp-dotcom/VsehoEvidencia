@@ -21,6 +21,7 @@ import {
   Folders,
   ShieldCheck,
   SlidersHorizontal,
+  BookUser,
 } from "lucide-react"
 import type { Role } from "@/generated/prisma/enums"
 
@@ -79,6 +80,7 @@ const navSections: NavSection[] = [
       { href: "/dashboard/registratura/podatelna", label: "Podateľňa",          icon: Inbox,       color: "text-teal-400",   roles: ["PRACOVNIK_PODATELNE", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/zaznamy",   label: "Záznamy",             icon: FileText,    color: "text-indigo-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/spisy",     label: "Spisy",               icon: Folders,     color: "text-violet-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/registratura/adrestar",   label: "Adresár",      icon: BookUser,          color: "text-emerald-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/admin",      label: "Správa rolí",  icon: ShieldCheck,       color: "text-rose-400",  roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/nastavenia", label: "Nastavenia",  icon: SlidersHorizontal, color: "text-slate-400", roles: ["SPRAVCA_REGISTRATURY"] },
     ],
@@ -86,8 +88,9 @@ const navSections: NavSection[] = [
   {
     title: "Nastavenia",
     items: [
-      { href: "/dashboard/users",      label: "Používatelia", icon: Users,      color: "text-purple-400", roles: [] },
-      { href: "/dashboard/admin/logs", label: "Audit Log",    icon: ScrollText, color: "text-rose-400",   roles: ["SPRAVCA_MAJETKU", "SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/users",         label: "Používatelia", icon: Users,      color: "text-purple-400", roles: [] },
+      { href: "/dashboard/admin/utvary",  label: "Útvary",       icon: Settings,   color: "text-teal-400",   roles: ["SPRAVCA_APLIKACIE"] },
+      { href: "/dashboard/admin/logs",    label: "Audit Log",    icon: ScrollText, color: "text-rose-400",   roles: ["SPRAVCA_MAJETKU", "SPRAVCA_APLIKACIE"] },
     ],
   },
 ]

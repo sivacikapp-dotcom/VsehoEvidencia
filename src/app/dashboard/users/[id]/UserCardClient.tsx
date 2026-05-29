@@ -2,10 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Package, Clock, FileText, Building2, Pencil, Loader2, X, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, ClipboardList, CheckSquare, Square } from "lucide-react"
+import { ArrowLeft, Package, Clock, FileText, Building2, Pencil, Loader2, X, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, ClipboardList, CheckSquare, Square, Layers, Shield } from "lucide-react"
 import { assetTypeLabels, brandLabels, functionStatusLabels, functionStatusColors } from "@/lib/labels"
 import type { Role, AssetType, Brand, FunctionStatus } from "@/generated/prisma/enums"
-import { setUserRoomAccess } from "../actions"
+import { setUserRoomAccess, setUserUtvary, updateUser } from "../actions"
 import { returnAsset } from "../../assets/actions"
 import { useRouter } from "next/navigation"
 import { useTablePrefs, type ColDef } from "@/lib/useTablePrefs"
@@ -60,6 +60,34 @@ type Assignment = {
 
 type RoomAccess = { roomId: number; roomName: string }
 type AllRoom = { id: number; name: string }
+type UserUtvar = { utvarId: number; utvarNazov: string }
+type AllUtvar = { id: number; nazov: string }
+type AllUser = { id: number; firstName: string; lastName: string }
+
+const ROLE_GROUPS: { label: string; roles: { value: Role; label: string }[] }[] = [
+  { label: "Aplikácia", roles: [{ value: "SPRAVCA_APLIKACIE", label: "Správca aplikácie" }] },
+  { label: "Registratúra", roles: [
+    { value: "SPRAVCA_REGISTRATURY", label: "Správca registratúry" },
+    { value: "PRACOVNIK_PODATELNE", label: "Prac. podateľne" },
+    { value: "SPRACOVATEL_REGISTRATURY", label: "Spracovateľ registratúry" },
+  ]},
+  { label: "Pracovné cesty", roles: [{ value: "SPRAVCA_PRACOVNYCH_CIEST", label: "Správca pracovných ciest" }] },
+  { label: "Dokumenty", roles: [
+    { value: "SPRAVCA_DOKUMENTOV", label: "Správca dokumentov" },
+    { value: "GESTOR_AGENDY", label: "Gestor agendy" },
+    { value: "GESTOR_DOKUMENTU", label: "Gestor dokumentu" },
+  ]},
+  { label: "Majetok", roles: [
+    { value: "SPRAVCA_MAJETKU", label: "Správca majetku" },
+    { value: "PRIJEMCA", label: "Príjemca" },
+  ]},
+  { label: "Ostatné", roles: [
+    { value: "BEZPECNOSTNY_PRACOVNIK", label: "Bezpečnostný pracovník" },
+    { value: "NADRIADENY", label: "Nadriadený" },
+  ]},
+]
+
+const inputCls = "w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
 
 interface Props {
   user: {
@@ -68,11 +96,16 @@ interface Props {
     lastName: string
     email: string
     roles: Role[]
+    supervisorId: number | null
     supervisorName: string | null
   }
   assignments: Assignment[]
   roomAccesses: RoomAccess[]
   allRooms: AllRoom[]
+  utvary: UserUtvar[]
+  allUtvary: AllUtvar[]
+  allUsers: AllUser[]
+  isAdmin: boolean
   viewerUserId: number
   viewerName: string
   isManager: boolean
@@ -576,10 +609,187 @@ function RoomAccessModal({ userId, allRooms, currentRoomIds, onClose }: { userId
   )
 }
 
-export default function UserCardClient({ user, assignments, roomAccesses, allRooms, viewerUserId, viewerName, isManager = true, backUrl = "/dashboard/users" }: Props) {
-  const [tab, setTab] = useState<"current" | "history" | "rooms">("current")
+function RoleCheckboxes({ selected, onChange }: { selected: Role[]; onChange: (r: Role[]) => void }) {
+  function toggle(value: Role) {
+    onChange(selected.includes(value) ? selected.filter(r => r !== value) : [...selected, value])
+  }
+  return (
+    <div className="space-y-3">
+      {ROLE_GROUPS.map((group, gi) => (
+        <div key={group.label}>
+          {gi > 0 && <div className="border-t border-gray-100 dark:border-gray-700/60 mb-3" />}
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-1.5">{group.label}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {group.roles.map(({ value, label }) => {
+              const checked = selected.includes(value)
+              return (
+                <label key={value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border cursor-pointer text-sm transition-colors ${checked ? "border-blue-500 bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" : "border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-gray-300"}`}>
+                  <input type="checkbox" className="hidden" checked={checked} onChange={() => toggle(value)} />
+                  {label}
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function RolyTab({ user, allUsers, isAdmin }: { user: Props["user"]; allUsers: AllUser[]; isAdmin: boolean }) {
+  const router = useRouter()
+  const [editing, setEditing] = useState(false)
+  const [roles, setRoles] = useState<Role[]>(user.roles)
+  const [supervisorId, setSupervisorId] = useState<string>(user.supervisorId ? String(user.supervisorId) : "")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setPending(true); setError("")
+    const result = await updateUser(user.id, roles, supervisorId ? parseInt(supervisorId) : null)
+    setPending(false)
+    if (result.error) { setError(result.error); return }
+    router.refresh()
+    setEditing(false)
+  }
+
+  function handleCancel() {
+    setRoles(user.roles)
+    setSupervisorId(user.supervisorId ? String(user.supervisorId) : "")
+    setError("")
+    setEditing(false)
+  }
+
+  return (
+    <div className="p-6 max-w-lg">
+      <div className="flex items-center justify-between mb-5">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Roly a nadriadený</h3>
+        {isAdmin && !editing && (
+          <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors">
+            <Pencil size={13} />Upraviť
+          </button>
+        )}
+      </div>
+
+      {!editing ? (
+        <div className="space-y-4">
+          <div>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Roly</p>
+            <div className="flex flex-wrap gap-1.5">
+              {user.roles.map(r => (
+                <span key={r} className={`text-sm px-2.5 py-1 rounded-full font-medium ${roleBadge[r]}`}>{roleLabel[r]}</span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nadriadený</p>
+            <p className="text-sm text-gray-800 dark:text-gray-200">
+              {user.supervisorName ?? <span className="text-gray-400 dark:text-gray-500">— bez nadriadeného —</span>}
+            </p>
+          </div>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">Roly <span className="text-red-500">*</span></p>
+            <RoleCheckboxes selected={roles} onChange={setRoles} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nadriadený</label>
+            <select value={supervisorId} onChange={e => setSupervisorId(e.target.value)} className={inputCls}>
+              <option value="">— bez nadriadeného —</option>
+              {allUsers.filter(u => u.id !== user.id).map(u => (
+                <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>
+              ))}
+            </select>
+          </div>
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <button type="button" onClick={handleCancel} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+              Zrušiť
+            </button>
+            <button type="submit" disabled={pending} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+              {pending && <Loader2 size={14} className="animate-spin" />}
+              {pending ? "Ukladám..." : "Uložiť zmeny"}
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}
+
+function UtvarModal({ userId, allUtvary, currentUtvarIds, onClose }: { userId: number; allUtvary: AllUtvar[]; currentUtvarIds: number[]; onClose: () => void }) {
+  const router = useRouter()
+  const [selected, setSelected] = useState<Set<number>>(new Set(currentUtvarIds))
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+
+  function toggle(id: number) {
+    setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setPending(true); setError("")
+    const result = await setUserUtvary(userId, Array.from(selected))
+    setPending(false)
+    if (result.error) setError(result.error)
+    else { router.refresh(); onClose() }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Zaradenie do útvarov</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Vyberte útvary, v ktorých je používateľ zaradený</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="px-6 py-4 max-h-80 overflow-y-auto">
+            {allUtvary.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Žiadne útvary v systéme. Najprv ich vytvorte v sekcii Útvary.</p>
+            ) : (
+              <div className="space-y-1">
+                {allUtvary.map(utvar => {
+                  const checked = selected.has(utvar.id)
+                  return (
+                    <label key={utvar.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors ${checked ? "bg-blue-50 dark:bg-blue-900/30" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggle(utvar.id)} className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                      <span className={`text-sm font-medium ${checked ? "text-blue-700 dark:text-blue-300" : "text-gray-700 dark:text-gray-300"}`}>{utvar.nazov}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+            <p className="text-xs text-gray-400 dark:text-gray-500">Vybrané: <span className="font-medium text-gray-600 dark:text-gray-300">{selected.size}</span></p>
+            <div className="flex gap-2">
+              {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+              <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Zrušiť</button>
+              <button type="submit" disabled={pending} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+                {pending && <Loader2 size={14} className="animate-spin" />}
+                {pending ? "Ukladám..." : "Uložiť"}
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+export default function UserCardClient({ user, assignments, roomAccesses, allRooms, utvary, allUtvary, allUsers, isAdmin, viewerUserId, viewerName, isManager = true, backUrl = "/dashboard/users" }: Props) {
+  const [tab, setTab] = useState<"current" | "history" | "rooms" | "utvary" | "roly">("current")
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showHandoverModal, setShowHandoverModal] = useState(false)
+  const [showUtvarModal, setShowUtvarModal] = useState(false)
 
   const current = assignments.filter(a => a.isCurrent)
   const history = assignments.filter(a => !a.isCurrent)
@@ -614,6 +824,10 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
                 <p className="text-2xl font-bold text-purple-700 dark:text-purple-400">{roomAccesses.length}</p>
                 <p className="text-xs text-purple-500 dark:text-purple-400 mt-0.5">Miestnosti</p>
               </div>
+              <div className="bg-teal-50 dark:bg-teal-900/30 rounded-xl px-5 py-3">
+                <p className="text-2xl font-bold text-teal-700 dark:text-teal-400">{utvary.length}</p>
+                <p className="text-xs text-teal-500 dark:text-teal-400 mt-0.5">Útvary</p>
+              </div>
             </div>
             {isManager && (
               <div className="flex gap-2">
@@ -645,6 +859,8 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
             { key: "current", label: "Aktuálne pridelené", icon: Package, count: current.length, countCls: "bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300" },
             { key: "history", label: "História vrátení", icon: Clock, count: history.length, countCls: "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300" },
             { key: "rooms", label: "Prístupy do miestností", icon: Building2, count: roomAccesses.length, countCls: "bg-purple-100 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300" },
+            { key: "utvary", label: "Útvary", icon: Layers, count: utvary.length, countCls: "bg-teal-100 dark:bg-teal-900/50 text-teal-700 dark:text-teal-300" },
+            { key: "roly", label: "Roly a nadriadený", icon: Shield, count: 0, countCls: "" },
           ] as const).map(({ key, label, icon: Icon, count, countCls }) => (
             <button
               key={key}
@@ -660,6 +876,35 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
 
         {tab === "current" && <CurrentTable items={current} viewerUserId={viewerUserId} isManager={isManager} viewerName={viewerName} />}
         {tab === "history" && <HistoryTable items={history} viewerUserId={viewerUserId} />}
+        {tab === "utvary" && (
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {utvary.length === 0 ? "Používateľ nie je zaradený v žiadnom útvare." : `Zaradený v ${utvary.length} ${utvary.length === 1 ? "útvare" : "útvaroch"}.`}
+              </p>
+              {isAdmin && (
+                <button onClick={() => setShowUtvarModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors">
+                  <Pencil size={13} />Upraviť zaradenie
+                </button>
+              )}
+            </div>
+            {utvary.length === 0 ? (
+              <div className="text-center py-8 text-gray-400 dark:text-gray-500">
+                <Layers size={32} className="mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Žiadne zaradenie do útvarov</p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {utvary.map(u => (
+                  <span key={u.utvarId} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-sm font-medium">
+                    <Layers size={13} />{u.utvarNazov}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {tab === "roly" && <RolyTab user={user} allUsers={allUsers} isAdmin={isAdmin} />}
         {tab === "rooms" && (
           <div className="p-5">
             <div className="flex items-center justify-between mb-4">
@@ -695,6 +940,9 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
       )}
       {showHandoverModal && (
         <HandoverSelectModal userId={user.id} items={current} onClose={() => setShowHandoverModal(false)} />
+      )}
+      {showUtvarModal && (
+        <UtvarModal userId={user.id} allUtvary={allUtvary} currentUtvarIds={utvary.map(u => u.utvarId)} onClose={() => setShowUtvarModal(false)} />
       )}
     </div>
   )

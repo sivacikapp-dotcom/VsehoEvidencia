@@ -665,6 +665,22 @@ model UserUtvar {
   @@id([userId, utvarId])
 }
 
+// ─── Adresár subjektov ────────────────────────────────────────────────────────
+
+model Subjekt {
+  id            Int      @id @default(autoincrement())
+  meno          String?
+  priezvisko    String?
+  nazov         String?
+  oddelenie     String?
+  ulica         String?
+  mesto         String?
+  psc           String?
+  identifikator String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
 // ─── Registratúra ─────────────────────────────────────────────────────────────
 
 enum PostaDirection {

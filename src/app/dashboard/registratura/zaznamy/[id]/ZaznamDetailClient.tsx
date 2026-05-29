@@ -1,12 +1,12 @@
 "use client"
 
-import { useState, useTransition, useRef } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft, FileText, Upload, Download, ShieldCheck, ShieldAlert,
   CheckCircle, FolderOpen, Pencil, X, Plus, Trash2, Loader2,
-  Inbox, Send, User, Building2, Paperclip,
+  Inbox, Send, User, Building2, Paperclip, Search,
 } from "lucide-react"
 import {
   regZaznamTypeLabels,
@@ -67,9 +67,17 @@ type ZaznamDetail = {
   updatedAt: string
 }
 
+type SubjektItem = {
+  id: number
+  meno: string | null; priezvisko: string | null; nazov: string | null
+  oddelenie: string | null; ulica: string | null; mesto: string | null
+  psc: string | null; identifikator: string | null
+}
+
 interface Props {
   zaznam: ZaznamDetail
   utvary: { id: number; nazov: string }[]
+  subjekty: SubjektItem[]
   canManage: boolean
   isAdmin: boolean
 }
@@ -94,44 +102,129 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
-// ─── Contact form fields (reused for odosielateľ + adresát) ──────────────────
+// ─── Contact form fields with address book search ────────────────────────────
 
-function ContactFields({ defaults }: { defaults?: Record<string, string | null> }) {
+type ContactValues = {
+  meno: string; priezvisko: string; nazov: string; oddelenie: string
+  ulica: string; mesto: string; psc: string; identifikator: string
+}
+
+function toValues(d?: Record<string, string | null> | null): ContactValues {
+  return {
+    meno: d?.meno ?? "", priezvisko: d?.priezvisko ?? "", nazov: d?.nazov ?? "",
+    oddelenie: d?.oddelenie ?? "", ulica: d?.ulica ?? "", mesto: d?.mesto ?? "",
+    psc: d?.psc ?? "", identifikator: d?.identifikator ?? "",
+  }
+}
+
+function ContactFields({ defaults, subjekty }: {
+  defaults?: Record<string, string | null> | null
+  subjekty: SubjektItem[]
+}) {
+  const [vals, setVals] = useState<ContactValues>(() => toValues(defaults))
+  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState(false)
+  const dropRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const suggestions = query.trim().length > 0
+    ? subjekty.filter(s => {
+        const q = query.toLowerCase()
+        return [s.meno, s.priezvisko, s.nazov, s.identifikator, s.mesto]
+          .filter(Boolean).some(v => v!.toLowerCase().includes(q))
+      }).slice(0, 8)
+    : []
+
+  function fill(s: SubjektItem) {
+    setVals({
+      meno: s.meno ?? "", priezvisko: s.priezvisko ?? "", nazov: s.nazov ?? "",
+      oddelenie: s.oddelenie ?? "", ulica: s.ulica ?? "", mesto: s.mesto ?? "",
+      psc: s.psc ?? "", identifikator: s.identifikator ?? "",
+    })
+    setQuery(""); setOpen(false)
+  }
+
+  function set(k: keyof ContactValues) {
+    return (e: React.ChangeEvent<HTMLInputElement>) => setVals(v => ({ ...v, [k]: e.target.value }))
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <div>
-        <label className={labelCls}>Meno</label>
-        <input type="text" name="meno" defaultValue={defaults?.meno ?? ""} className={inputCls} />
+    <div className="space-y-3">
+      {/* Adresár search */}
+      <div ref={dropRef} className="relative">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text" value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => setOpen(true)}
+            placeholder="Hľadať v adresári…"
+            className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/60 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        {open && suggestions.length > 0 && (
+          <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+            {suggestions.map(s => {
+              const osobne = [s.meno, s.priezvisko].filter(Boolean).join(" ")
+              return (
+                <button key={s.id} type="button" onClick={() => fill(s)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{osobne || s.nazov || "—"}</p>
+                  {osobne && s.nazov && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nazov}</p>}
+                  {(s.mesto || s.identifikator) && (
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {[s.mesto, s.identifikator ? `IČO: ${s.identifikator}` : null].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
-      <div>
-        <label className={labelCls}>Priezvisko</label>
-        <input type="text" name="priezvisko" defaultValue={defaults?.priezvisko ?? ""} className={inputCls} />
-      </div>
-      <div>
-        <label className={labelCls}>Názov</label>
-        <input type="text" name="nazov" defaultValue={defaults?.nazov ?? ""} className={inputCls} />
-      </div>
-      <div>
-        <label className={labelCls}>Oddelenie</label>
-        <input type="text" name="oddelenie" defaultValue={defaults?.oddelenie ?? ""} className={inputCls} />
-      </div>
-      <div>
-        <label className={labelCls}>Ulica</label>
-        <input type="text" name="ulica" defaultValue={defaults?.ulica ?? ""} className={inputCls} />
-      </div>
-      <div className="grid grid-cols-2 gap-2">
+
+      <div className="grid grid-cols-2 gap-3">
         <div>
-          <label className={labelCls}>Mesto</label>
-          <input type="text" name="mesto" defaultValue={defaults?.mesto ?? ""} className={inputCls} />
+          <label className={labelCls}>Meno</label>
+          <input type="text" name="meno" value={vals.meno} onChange={set("meno")} className={inputCls} />
         </div>
         <div>
-          <label className={labelCls}>PSČ</label>
-          <input type="text" name="psc" defaultValue={defaults?.psc ?? ""} className={inputCls} />
+          <label className={labelCls}>Priezvisko</label>
+          <input type="text" name="priezvisko" value={vals.priezvisko} onChange={set("priezvisko")} className={inputCls} />
         </div>
-      </div>
-      <div>
-        <label className={labelCls}>Identifikátor (IČO apod.)</label>
-        <input type="text" name="identifikator" defaultValue={defaults?.identifikator ?? ""} className={inputCls} />
+        <div>
+          <label className={labelCls}>Názov</label>
+          <input type="text" name="nazov" value={vals.nazov} onChange={set("nazov")} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Oddelenie</label>
+          <input type="text" name="oddelenie" value={vals.oddelenie} onChange={set("oddelenie")} className={inputCls} />
+        </div>
+        <div>
+          <label className={labelCls}>Ulica</label>
+          <input type="text" name="ulica" value={vals.ulica} onChange={set("ulica")} className={inputCls} />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className={labelCls}>Mesto</label>
+            <input type="text" name="mesto" value={vals.mesto} onChange={set("mesto")} className={inputCls} />
+          </div>
+          <div>
+            <label className={labelCls}>PSČ</label>
+            <input type="text" name="psc" value={vals.psc} onChange={set("psc")} className={inputCls} />
+          </div>
+        </div>
+        <div>
+          <label className={labelCls}>Identifikátor (IČO apod.)</label>
+          <input type="text" name="identifikator" value={vals.identifikator} onChange={set("identifikator")} className={inputCls} />
+        </div>
       </div>
     </div>
   )
@@ -148,7 +241,7 @@ function contactLabel(c: Record<string, string | null>) {
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function ZaznamDetailClient({ zaznam, utvary, canManage, isAdmin }: Props) {
+export default function ZaznamDetailClient({ zaznam, utvary, subjekty, canManage, isAdmin }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [editing, setEditing] = useState(false)
@@ -457,7 +550,7 @@ export default function ZaznamDetailClient({ zaznam, utvary, canManage, isAdmin 
 
           {editingOdos ? (
             <form onSubmit={handleSaveOdos} className="p-5 space-y-4">
-              <ContactFields defaults={zaznam.odosielatel as unknown as unknown as Record<string, string | null> | undefined} />
+              <ContactFields defaults={zaznam.odosielatel as unknown as Record<string, string | null> | null} subjekty={subjekty} />
               <div className="flex gap-2">
                 <button type="submit" disabled={savingOdos}
                   className="flex items-center gap-1.5 px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
@@ -509,7 +602,7 @@ export default function ZaznamDetailClient({ zaznam, utvary, canManage, isAdmin 
               <div key={a.id} className="px-5 py-4">
                 {editingAdresatId === a.id ? (
                   <form onSubmit={e => handleUpdateAdresat(e, a.id)} className="space-y-3">
-                    <ContactFields defaults={a as unknown as Record<string, string | null>} />
+                    <ContactFields defaults={a as unknown as Record<string, string | null>} subjekty={subjekty} />
                     <div className="flex gap-2">
                       <button type="submit" disabled={savingAdresat}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg disabled:opacity-50">
@@ -548,7 +641,7 @@ export default function ZaznamDetailClient({ zaznam, utvary, canManage, isAdmin 
             {addingAdresat && (
               <form onSubmit={handleAddAdresat} className="px-5 py-4 space-y-3">
                 <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Nový adresát</p>
-                <ContactFields />
+                <ContactFields subjekty={subjekty} />
                 <div className="flex gap-2">
                   <button type="submit" disabled={savingAdresat}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg disabled:opacity-50">

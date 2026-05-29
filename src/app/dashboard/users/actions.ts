@@ -134,6 +134,35 @@ export async function deleteUser(userId: number): Promise<Result> {
   }
 }
 
+export async function setUserUtvary(
+  userId: number,
+  utvarIds: number[]
+): Promise<Result> {
+  const session = await getServerSession(authOptions)
+  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
+  if (!session || !callerRoles.includes("SPRAVCA_APLIKACIE")) {
+    return { error: "Nemáte oprávnenie spravovať zaradenie do útvarov." }
+  }
+
+  try {
+    await prisma.userUtvar.deleteMany({ where: { userId } })
+    if (utvarIds.length > 0) {
+      await prisma.userUtvar.createMany({
+        data: utvarIds.map((utvarId) => ({ userId, utvarId })),
+      })
+    }
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "USER_UTVAR", entityId: userId, entityLabel: null,
+      newData: { userId, utvarIds },
+    })
+    revalidatePath(`/dashboard/users/${userId}`)
+    return { success: true }
+  } catch {
+    return { error: "Nastala chyba pri ukladaní." }
+  }
+}
+
 export async function setUserRoomAccess(
   userId: number,
   roomIds: number[]
