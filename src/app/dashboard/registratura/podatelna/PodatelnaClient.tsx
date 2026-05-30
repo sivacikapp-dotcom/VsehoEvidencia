@@ -1,13 +1,17 @@
 "use client"
 
-import { useState, useMemo, useTransition } from "react"
+import { useState, useMemo, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, Inbox, Send, ExternalLink, Shuffle } from "lucide-react"
+import { Search, X, ArrowUpDown, ChevronUp, ChevronDown, Inbox, Send, ExternalLink, Shuffle } from "lucide-react"
+import { FilterSelect } from "@/components/FilterSelect"
+import { MultiSelect } from "@/components/MultiSelect"
+import { DateRangeFilter } from "@/components/DateRangeFilter"
 import {
   postaDirectionLabels, postaDirectionColors,
   postaSpusobLabels, postaStatusLabels, postaStatusColors,
 } from "@/lib/regLabels"
-import type { PostaDirection, PostaSpusob, PostaStatus } from "@/generated/prisma/enums"
+import type { PostaDirection, PostaStatus } from "@/generated/prisma/enums"
+import type { SubjektItem } from "@/components/ContactFields"
 import { createPosta, updatePosta, prekloritDoRegistratury } from "./actions"
 
 type PostaRow = {
@@ -15,7 +19,7 @@ type PostaRow = {
   poradoveCislo: string
   smer: PostaDirection
   datumDoruceOdoslania: string
-  sposob: PostaSpusob
+  sposob: string
   odosielatelPrijemcaNazov: string
   odosielatelPrijemcaAdresa: string | null
   odosielatelPrijemcaIco: string | null
@@ -30,8 +34,74 @@ interface Props {
   posta: PostaRow[]
   plans: { id: number; znacka: string; nazov: string }[]
   spracovatelia: { id: number; firstName: string; lastName: string }[]
+  subjekty: SubjektItem[]
   canWrite: boolean
 }
+
+type ContactVals = { nazov: string; adresa: string; ico: string }
+
+function SubjektSearch({ subjekty, onSelect }: { subjekty: SubjektItem[]; onSelect: (vals: ContactVals) => void }) {
+  const [query, setQuery] = useState("")
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function h(e: MouseEvent) { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener("mousedown", h)
+    return () => document.removeEventListener("mousedown", h)
+  }, [])
+
+  const suggestions = query.trim().length > 0
+    ? subjekty.filter(s => {
+        const q = query.toLowerCase()
+        return [s.meno, s.priezvisko, s.nazov, s.identifikator, s.mesto]
+          .filter(Boolean).some(v => v!.toLowerCase().includes(q))
+      }).slice(0, 8)
+    : []
+
+  function pick(s: SubjektItem) {
+    const osobne = [s.meno, s.priezvisko].filter(Boolean).join(" ")
+    const nazov = s.nazov || osobne
+    const adresaParts = [s.ulica, [s.mesto, s.psc].filter(Boolean).join(" ")].filter(Boolean)
+    onSelect({ nazov, adresa: adresaParts.join(", "), ico: s.identifikator ?? "" })
+    setQuery(""); setOpen(false)
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="relative">
+        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        <input
+          type="text" value={query}
+          onChange={e => { setQuery(e.target.value); setOpen(true) }}
+          onFocus={() => setOpen(true)}
+          placeholder="Hľadať v adresári subjektov…"
+          className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/60 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-30 left-0 right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+          {suggestions.map(s => {
+            const osobne = [s.meno, s.priezvisko].filter(Boolean).join(" ")
+            return (
+              <button key={s.id} type="button" onClick={() => pick(s)}
+                className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 dark:hover:bg-blue-900/30 border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors">
+                <p className="font-medium text-gray-900 dark:text-gray-100">{osobne || s.nazov || "—"}</p>
+                {osobne && s.nazov && <p className="text-xs text-gray-500 dark:text-gray-400">{s.nazov}</p>}
+                {(s.mesto || s.identifikator) && (
+                  <p className="text-xs text-gray-400 dark:text-gray-500">
+                    {[s.mesto, s.identifikator ? `IČO: ${s.identifikator}` : null].filter(Boolean).join(" · ")}
+                  </p>
+                )}
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 type SortKey = "poradoveCislo" | "smer" | "datum" | "nazov" | "vec" | "status"
 
@@ -66,17 +136,42 @@ type ModalState =
   | { mode: "edit"; row: PostaRow }
   | { mode: "preklop"; row: PostaRow }
 
-export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite }: Props) {
+export default function PodatelnaClient({ posta, plans, spracovatelia, subjekty, canWrite }: Props) {
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
   const [filterSmer, setFilterSmer] = useState<PostaDirection | "">("")
-  const [filterStatus, setFilterStatus] = useState<PostaStatus | "">("")
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set())
+  const [filterYears, setFilterYears] = useState<Set<string>>(new Set())
+  const [filterDateOd, setFilterDateOd] = useState("")
+  const [filterDateDo, setFilterDateDo] = useState("")
+
+  const yearOptions = useMemo(() => {
+    const years = [...new Set(posta.map(r => r.datumDoruceOdoslania.slice(0, 4)))].sort().reverse()
+    return years.map(y => ({ value: y, label: y }))
+  }, [posta])
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [modal, setModal] = useState<ModalState>({ mode: "none" })
+  const [contact, setContact] = useState<ContactVals>({ nazov: "", adresa: "", ico: "" })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState("")
+
+  function openNew(smer: "DOSLA" | "ODOSLANA") {
+    setContact({ nazov: "", adresa: "", ico: "" })
+    setModal({ mode: "new", smer })
+    setError("")
+  }
+
+  function openEdit(row: PostaRow) {
+    setContact({
+      nazov: row.odosielatelPrijemcaNazov,
+      adresa: row.odosielatelPrijemcaAdresa ?? "",
+      ico: row.odosielatelPrijemcaIco ?? "",
+    })
+    setModal({ mode: "edit", row })
+    setError("")
+  }
 
   function handleSort(k: SortKey) {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc")
@@ -94,9 +189,12 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
       )
     }
     if (filterSmer) rows = rows.filter(r => r.smer === filterSmer)
-    if (filterStatus) rows = rows.filter(r => r.status === filterStatus)
+    if (filterStatuses.size > 0) rows = rows.filter(r => filterStatuses.has(r.status))
+    if (filterYears.size > 0) rows = rows.filter(r => filterYears.has(r.datumDoruceOdoslania.slice(0, 4)))
+    if (filterDateOd) rows = rows.filter(r => r.datumDoruceOdoslania >= filterDateOd)
+    if (filterDateDo) rows = rows.filter(r => r.datumDoruceOdoslania <= filterDateDo)
     return rows
-  }, [posta, search, filterSmer, filterStatus])
+  }, [posta, search, filterSmer, filterStatuses, filterYears, filterDateOd, filterDateDo])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -159,11 +257,11 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
         </div>
         {canWrite && (
           <div className="flex items-center gap-2">
-            <button onClick={() => { setModal({ mode: "new", smer: "DOSLA" }); setError("") }}
+            <button onClick={() => openNew("DOSLA")}
               className="flex items-center gap-2 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors">
               <Inbox size={15} /> Nová došlá
             </button>
-            <button onClick={() => { setModal({ mode: "new", smer: "ODOSLANA" }); setError("") }}
+            <button onClick={() => openNew("ODOSLANA")}
               className="flex items-center gap-2 px-3 py-2 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors">
               <Send size={15} /> Nová odoslaná
             </button>
@@ -178,20 +276,38 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Hľadať..."
             className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56" />
         </div>
-        <select value={filterSmer} onChange={e => setFilterSmer(e.target.value as PostaDirection | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Smer: všetky</option>
-          <option value="DOSLA">Došlá</option>
-          <option value="ODOSLANA">Odoslaná</option>
-        </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as PostaStatus | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Stav: všetky</option>
-          <option value="ZAREGISTROVANA">Zaregistrovaná</option>
-          <option value="PREKLASIFIKOVANA">Preklopená</option>
-        </select>
-        {(search || filterSmer || filterStatus) && (
-          <button onClick={() => { setSearch(""); setFilterSmer(""); setFilterStatus("") }}
+        <FilterSelect
+          label="Smer"
+          value={filterSmer}
+          onChange={v => setFilterSmer(v as PostaDirection | "")}
+          options={[
+            { value: "DOSLA", label: "Došlá" },
+            { value: "ODOSLANA", label: "Odoslaná" },
+          ]}
+        />
+        <MultiSelect
+          placeholder="Stav"
+          selected={filterStatuses}
+          onChange={setFilterStatuses}
+          options={[
+            { value: "ZAREGISTROVANA", label: "Zaregistrovaná" },
+            { value: "PREKLASIFIKOVANA", label: "Preklopená" },
+          ]}
+        />
+        <MultiSelect
+          placeholder="Rok"
+          selected={filterYears}
+          onChange={setFilterYears}
+          options={yearOptions}
+        />
+        <DateRangeFilter
+          od={filterDateOd}
+          do={filterDateDo}
+          onOd={setFilterDateOd}
+          onDo={setFilterDateDo}
+        />
+        {(search || filterSmer || filterStatuses.size > 0 || filterYears.size > 0 || filterDateOd || filterDateDo) && (
+          <button onClick={() => { setSearch(""); setFilterSmer(""); setFilterStatuses(new Set()); setFilterYears(new Set()); setFilterDateOd(""); setFilterDateDo("") }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors">
             <X size={12} /> Zrušiť filtre
           </button>
@@ -262,7 +378,7 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
                     <div className="flex items-center gap-1">
                       {row.status === "ZAREGISTROVANA" && (
                         <>
-                          <button onClick={() => { setModal({ mode: "edit", row }); setError("") }}
+                          <button onClick={() => openEdit(row)}
                             className="px-2 py-1 text-xs rounded bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
                             Upraviť
                           </button>
@@ -318,9 +434,9 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
               ) : null}
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spôsob doručenia *</label>
-                <select name="sposob" defaultValue={editRow?.sposob ?? "POSTA"} required
+                <select name="sposob" defaultValue={editRow?.sposob ?? "SpDor2"} required
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-                  {(Object.entries(postaSpusobLabels) as [PostaSpusob, string][]).map(([k, v]) => (
+                  {Object.entries(postaSpusobLabels).map(([k, v]) => (
                     <option key={k} value={k}>{v}</option>
                   ))}
                 </select>
@@ -330,22 +446,25 @@ export default function PodatelnaClient({ posta, plans, spracovatelia, canWrite 
                 <input type="date" name="datumDoruceOdoslania" defaultValue={editRow?.datumDoruceOdoslania ?? new Date().toISOString().split("T")[0]} required
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Odosielateľ / Príjemca *</label>
-                <input type="text" name="odosielatelPrijemcaNazov" defaultValue={editRow?.odosielatelPrijemcaNazov ?? ""} required
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Názov firmy / Meno" />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <SubjektSearch subjekty={subjekty} onSelect={setContact} />
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Adresa</label>
-                  <input type="text" name="adresa" defaultValue={editRow?.odosielatelPrijemcaAdresa ?? ""}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Odosielateľ / Príjemca *</label>
+                  <input type="text" name="odosielatelPrijemcaNazov" value={contact.nazov} onChange={e => setContact(c => ({ ...c, nazov: e.target.value }))} required
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Názov firmy / Meno" />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">IČO</label>
-                  <input type="text" name="ico" defaultValue={editRow?.odosielatelPrijemcaIco ?? ""}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Adresa</label>
+                    <input type="text" name="adresa" value={contact.adresa} onChange={e => setContact(c => ({ ...c, adresa: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">IČO</label>
+                    <input type="text" name="ico" value={contact.ico} onChange={e => setContact(c => ({ ...c, ico: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
                 </div>
               </div>
               <div>

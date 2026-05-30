@@ -9,6 +9,6 @@ export default async function RegistraturaPage() {
   const roles = session.user.roles as string[]
   if (roles.includes("PRACOVNIK_PODATELNE")) redirect("/dashboard/registratura/podatelna")
   if (roles.includes("SPRACOVATEL_REGISTRATURY")) redirect("/dashboard/registratura/zaznamy")
-  if (roles.includes("SPRAVCA_REGISTRATURY")) redirect("/dashboard/registratura/admin")
+  if (roles.includes("SPRAVCA_REGISTRATURY")) redirect("/dashboard/registratura/nastavenia")
   redirect("/dashboard")
 }

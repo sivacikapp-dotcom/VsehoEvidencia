@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { X, ChevronLeft, ChevronRight } from "lucide-react"
+import { MultiSelect } from "@/components/MultiSelect"
 
 type LogEntry = {
   id: number
@@ -19,8 +20,8 @@ type LogEntry = {
 }
 
 type Filters = {
-  entityType: string
-  action: string
+  entityTypes: string[]
+  actions: string[]
   search: string
 }
 
@@ -202,8 +203,8 @@ export default function LogsClient({
   function buildUrl(overrides: Partial<Filters & { page: number }>) {
     const params = new URLSearchParams()
     const merged = { ...filters, page, ...overrides }
-    if (merged.entityType) params.set("entityType", merged.entityType)
-    if (merged.action) params.set("action", merged.action)
+    if (merged.entityTypes.length > 0) params.set("entityType", merged.entityTypes.join(","))
+    if (merged.actions.length > 0) params.set("action", merged.actions.join(","))
     if (merged.search) params.set("search", merged.search)
     if ((merged as { page: number }).page > 1) params.set("page", String((merged as { page: number }).page))
     const qs = params.toString()
@@ -244,27 +245,19 @@ export default function LogsClient({
           className="flex-1 min-w-48 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
 
-        <select
-          value={filters.entityType}
-          onChange={(e) => navigate({ entityType: e.target.value, page: 1 })}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Všetky entity</option>
-          {entityTypes.map((et) => (
-            <option key={et} value={et}>{et}</option>
-          ))}
-        </select>
+        <MultiSelect
+          placeholder="Entita"
+          selected={new Set(filters.entityTypes)}
+          onChange={next => navigate({ entityTypes: [...next], page: 1 })}
+          options={entityTypes.map(et => ({ value: et, label: et }))}
+        />
 
-        <select
-          value={filters.action}
-          onChange={(e) => navigate({ action: e.target.value, page: 1 })}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Všetky akcie</option>
-          {ACTIONS.map((a) => (
-            <option key={a} value={a}>{ACTION_LABELS[a]}</option>
-          ))}
-        </select>
+        <MultiSelect
+          placeholder="Akcia"
+          selected={new Set(filters.actions)}
+          onChange={next => navigate({ actions: [...next], page: 1 })}
+          options={ACTIONS.map(a => ({ value: a, label: ACTION_LABELS[a] }))}
+        />
       </div>
 
       {/* Table */}

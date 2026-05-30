@@ -19,7 +19,6 @@ import {
   Inbox,
   FileText,
   Folders,
-  ShieldCheck,
   SlidersHorizontal,
   BookUser,
 } from "lucide-react"
@@ -81,7 +80,6 @@ const navSections: NavSection[] = [
       { href: "/dashboard/registratura/zaznamy",   label: "Záznamy",             icon: FileText,    color: "text-indigo-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/spisy",     label: "Spisy",               icon: Folders,     color: "text-violet-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/adrestar",   label: "Adresár",      icon: BookUser,          color: "text-emerald-400", roles: ["SPRACOVATEL_REGISTRATURY", "SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
-      { href: "/dashboard/registratura/admin",      label: "Správa rolí",  icon: ShieldCheck,       color: "text-rose-400",  roles: ["SPRAVCA_REGISTRATURY", "SPRAVCA_APLIKACIE"] },
       { href: "/dashboard/registratura/nastavenia", label: "Nastavenia",  icon: SlidersHorizontal, color: "text-slate-400", roles: ["SPRAVCA_REGISTRATURY"] },
     ],
   },

@@ -18,13 +18,15 @@ export default async function AdminLogsPage({
 
   const sp = await searchParams
   const page = Math.max(1, parseInt((sp.page as string) ?? "1", 10) || 1)
-  const entityType = (sp.entityType as string) || ""
-  const action = (sp.action as string) || ""
+  const entityTypeParam = (sp.entityType as string) || ""
+  const actionParam = (sp.action as string) || ""
   const search = (sp.search as string) || ""
+  const entityTypes = entityTypeParam ? entityTypeParam.split(",").filter(Boolean) : []
+  const actions = actionParam ? actionParam.split(",").filter(Boolean) : []
 
   const where = {
-    ...(entityType ? { entityType } : {}),
-    ...(action ? { action } : {}),
+    ...(entityTypes.length > 0 ? { entityType: { in: entityTypes } } : {}),
+    ...(actions.length > 0 ? { action: { in: actions } } : {}),
     ...(search
       ? {
           OR: [
@@ -46,7 +48,7 @@ export default async function AdminLogsPage({
     }),
   ])
 
-  const entityTypes = await prisma.auditLog.findMany({
+  const entityTypeRows = await prisma.auditLog.findMany({
     select: { entityType: true },
     distinct: ["entityType"],
     orderBy: { entityType: "asc" },
@@ -76,8 +78,8 @@ export default async function AdminLogsPage({
         total={total}
         page={page}
         pageSize={PAGE_SIZE}
-        filters={{ entityType, action, search }}
-        entityTypes={entityTypes.map((e) => e.entityType)}
+        filters={{ entityTypes, actions, search }}
+        entityTypes={entityTypeRows.map((e) => e.entityType)}
       />
     </div>
   )

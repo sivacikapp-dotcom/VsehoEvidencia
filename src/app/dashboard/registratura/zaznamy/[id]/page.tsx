@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect, notFound } from "next/navigation"
 import ZaznamDetailClient from "./ZaznamDetailClient"
+import { getCislonik } from "@/lib/cislonik"
 
 export default async function ZaznamDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -33,7 +34,7 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
 
   if (!isAdmin && zaznam.spracovatelId !== userId) redirect("/dashboard/registratura/zaznamy")
 
-  const [utvary, subjekty, spracovatelov] = await Promise.all([
+  const [utvary, subjekty, spracovatelov, stavOptions, sposobOptions] = await Promise.all([
     prisma.utvar.findMany({ orderBy: { nazov: "asc" } }),
     prisma.subjekt.findMany({ orderBy: [{ priezvisko: "asc" }, { nazov: "asc" }] }),
     prisma.user.findMany({
@@ -41,6 +42,8 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
       select: { id: true, firstName: true, lastName: true },
       orderBy: { lastName: "asc" },
     }),
+    getCislonik("STAV_ZAZNAMU"),
+    getCislonik("SPOSOB_VYBAVENIA"),
   ])
 
   const canManage = (isSpracovatel && zaznam.spracovatelId === userId) ||
@@ -92,6 +95,8 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
           identifikator: s.identifikator,
         }))}
         spracovatelov={spracovatelov}
+        stavOptions={stavOptions.map(s => ({ kod: s.kod, popis: s.popis }))}
+        sposobOptions={sposobOptions.map(s => ({ kod: s.kod, popis: s.popis }))}
         canManage={canManage}
         isAdmin={isAdmin}
       />

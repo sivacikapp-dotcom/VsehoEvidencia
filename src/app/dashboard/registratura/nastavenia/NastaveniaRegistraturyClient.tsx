@@ -4,25 +4,31 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import {
   Loader2, Check, Plus, Pencil, Trash2, X, ChevronRight, ChevronDown,
-  FolderOpen, FileText, FileCode, Archive,
+  FolderOpen, FileText, FileCode, Archive, Search, Shield,
 } from "lucide-react"
-import { updateRegistraturaRoles, createPlanItem, updatePlanItem, deletePlanItem } from "./actions"
+import { setRegRoles, createPlanItem, updatePlanItem, deletePlanItem } from "./actions"
+import CislonikTab from "./CislonikTab"
+import type { CislonikTyp, CislonikItem } from "@/lib/cislonik"
+import type { Role } from "@/generated/prisma/enums"
+import { regRoleLabels } from "@/lib/regLabels"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type UserRow = { id: number; firstName: string; lastName: string; hasPodatelna: boolean; hasSpracovatel: boolean }
+type UserRow = { id: number; name: string; email: string; regRoles: string[] }
 type PlanItem = { id: number; znacka: string; nazov: string; lehota: number; maArchivnu: boolean }
 
 interface Props {
   users: UserRow[]
   plan: PlanItem[]
+  cislonik: Record<CislonikTyp, CislonikItem[]>
 }
 
-type Tab = "plan" | "role" | "ine"
+type Tab = "plan" | "role" | "cislonik" | "ine"
 const TABS: { key: Tab; label: string }[] = [
-  { key: "plan",  label: "Registratúrny plán" },
-  { key: "role",  label: "Správa rolí" },
-  { key: "ine",   label: "Iné nastavenia" },
+  { key: "plan",     label: "Registratúrny plán" },
+  { key: "role",     label: "Správa rolí" },
+  { key: "cislonik", label: "Číselníky" },
+  { key: "ine",      label: "Iné nastavenia" },
 ]
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -337,24 +343,154 @@ function PlanTab({ plan }: { plan: PlanItem[] }) {
   )
 }
 
+// ─── Role Tab ─────────────────────────────────────────────────────────────────
+
+const ALL_REG_ROLES: Role[] = ["SPRAVCA_REGISTRATURY", "PRACOVNIK_PODATELNE", "SPRACOVATEL_REGISTRATURY"]
+
+const ROLE_DESC: Record<string, string> = {
+  SPRAVCA_REGISTRATURY:    "Čítanie všetkých záznamov, správa plánov a rolí",
+  PRACOVNIK_PODATELNE:     "Príjem a registrácia poštových zásielok",
+  SPRACOVATEL_REGISTRATURY: "Vytváranie a správa vlastných záznamov a spisov",
+}
+
+function RoleTab({ users }: { users: UserRow[] }) {
+  const router = useRouter()
+  const [, startTransition] = useTransition()
+  const [search, setSearch] = useState("")
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editRoles, setEditRoles] = useState<Role[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState("")
+
+  const filtered = users.filter(u => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  })
+
+  function startEdit(user: UserRow) {
+    setEditId(user.id)
+    setEditRoles(user.regRoles as Role[])
+    setError("")
+  }
+
+  function toggleRole(role: Role) {
+    setEditRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role])
+  }
+
+  async function handleSave() {
+    if (editId === null) return
+    setSaving(true); setError("")
+    const result = await setRegRoles(editId, editRoles)
+    setSaving(false)
+    if (result.error) { setError(result.error); return }
+    setEditId(null)
+    startTransition(() => router.refresh())
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {ALL_REG_ROLES.map(role => (
+          <div key={role} className="border border-gray-200 dark:border-gray-700 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Shield size={13} className="text-blue-500 shrink-0" />
+              <p className="text-xs font-medium text-gray-900 dark:text-white">{regRoleLabels[role]}</p>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{ROLE_DESC[role]}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="relative max-w-xs">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Hľadať používateľa…"
+          className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full" />
+      </div>
+
+      <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Používateľ</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Správca registratúry</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Pracovník podateľne</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Spracovateľ</th>
+              <th className="w-20" />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {filtered.length === 0 && (
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">Žiadni používatelia</td></tr>
+            )}
+            {filtered.map(u => (
+              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                <td className="px-4 py-3">
+                  <p className="font-medium text-gray-900 dark:text-white">{u.name}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{u.email}</p>
+                </td>
+                {editId === u.id ? (
+                  <>
+                    {ALL_REG_ROLES.map(role => (
+                      <td key={role} className="px-4 py-3">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input type="checkbox" checked={editRoles.includes(role)} onChange={() => toggleRole(role)}
+                            className="rounded border-gray-300 text-blue-600" />
+                        </label>
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <button onClick={handleSave} disabled={saving}
+                          className="p-1.5 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                          {saving ? <Loader2 size={13} className="animate-spin text-white" /> : <Check size={13} className="text-white" />}
+                        </button>
+                        <button onClick={() => setEditId(null)}
+                          className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                          <X size={13} className="text-gray-500" />
+                        </button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    {ALL_REG_ROLES.map(role => (
+                      <td key={role} className="px-4 py-3">
+                        {u.regRoles.includes(role) ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-400 bg-green-100 dark:bg-green-900/30 px-2 py-0.5 rounded-full">
+                            <Check size={11} /> Áno
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3">
+                      <button onClick={() => startEdit(u)}
+                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                        Upraviť
+                      </button>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {error && (
+          <div className="px-4 py-2 border-t border-gray-100 dark:border-gray-800 text-sm text-red-600 dark:text-red-400">
+            {error}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function NastaveniaRegistraturyClient({ users: initial, plan }: Props) {
+export default function NastaveniaRegistraturyClient({ users, plan, cislonik }: Props) {
   const [tab, setTab] = useState<Tab>("plan")
-  const [users, setUsers] = useState(initial)
-  const [saving, setSaving] = useState<Record<string, boolean>>({})
-
-  async function toggle(userId: number, field: "hasPodatelna" | "hasSpracovatel") {
-    const key = `${userId}-${field}`
-    if (saving[key]) return
-    const user = users.find(u => u.id === userId)!
-    const next = { ...user, [field]: !user[field] }
-    setUsers(prev => prev.map(u => (u.id === userId ? next : u)))
-    setSaving(prev => ({ ...prev, [key]: true }))
-    const res = await updateRegistraturaRoles(userId, next.hasPodatelna, next.hasSpracovatel)
-    setSaving(prev => ({ ...prev, [key]: false }))
-    if (res.error) { setUsers(prev => prev.map(u => (u.id === userId ? user : u))); alert(res.error) }
-  }
 
   return (
     <div>
@@ -375,54 +511,10 @@ export default function NastaveniaRegistraturyClient({ users: initial, plan }: P
         </nav>
       </div>
 
-      {tab === "plan" && <PlanTab plan={plan} />}
-
-      {tab === "role" && (
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-              <tr>
-                <th className="px-4 py-2.5 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Priezvisko, Meno</th>
-                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide w-44">Prac. podateľne</th>
-                <th className="px-4 py-2.5 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide w-44">Spracovateľ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {users.map(u => (
-                <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">{u.lastName} {u.firstName}</td>
-                  <td className="px-4 py-3 text-center">
-                    <ToggleCell checked={u.hasPodatelna} loading={!!saving[`${u.id}-hasPodatelna`]} onChange={() => toggle(u.id, "hasPodatelna")} />
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <ToggleCell checked={u.hasSpracovatel} loading={!!saving[`${u.id}-hasSpracovatel`]} onChange={() => toggle(u.id, "hasSpracovatel")} />
-                  </td>
-                </tr>
-              ))}
-              {users.length === 0 && (
-                <tr><td colSpan={3} className="px-4 py-10 text-center text-sm text-gray-400">Žiadni používatelia.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {tab === "ine" && (
-        <p className="text-sm italic text-gray-400 dark:text-gray-500">Obsah bude doplnený.</p>
-      )}
+      {tab === "plan"     && <PlanTab plan={plan} />}
+      {tab === "role"     && <RoleTab users={users} />}
+      {tab === "cislonik" && <CislonikTab cislonik={cislonik} />}
+      {tab === "ine"      && <p className="text-sm italic text-gray-400 dark:text-gray-500">Obsah bude doplnený.</p>}
     </div>
-  )
-}
-
-function ToggleCell({ checked, loading, onChange }: { checked: boolean; loading: boolean; onChange: () => void }) {
-  return (
-    <button onClick={onChange} disabled={loading} title={checked ? "Odobrať rolu" : "Priradiť rolu"}
-      className={`inline-flex items-center justify-center w-8 h-8 rounded-lg transition-colors disabled:opacity-50 ${
-        checked
-          ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/60"
-          : "bg-gray-100 dark:bg-gray-700/60 text-gray-300 dark:text-gray-600 hover:bg-gray-200 dark:hover:bg-gray-700"
-      }`}>
-      {loading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
-    </button>
   )
 }

@@ -6,7 +6,6 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createAuditLog } from "@/lib/auditLog"
 import { nextSpisNumber, currentYear } from "@/lib/regCounter"
-import type { SpisStatus } from "@/generated/prisma/enums"
 
 type Result = { error?: string; success?: boolean; id?: number }
 
@@ -15,7 +14,7 @@ function canManageSpis(roles: string[], spis: { spracovatelId: number }, userId:
   return roles.includes("SPRACOVATEL_REGISTRATURY") && spis.spracovatelId === userId
 }
 
-const CLOSED_STATUSES: SpisStatus[] = ["VYBAVENY", "UZATVORENY"]
+const CLOSED_STATUSES = ["StSpis3", "UZATVORENY"] // UZATVORENY = old data compat
 
 export async function createSpis(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
@@ -86,17 +85,17 @@ export async function updateSpis(spisId: number, formData: FormData): Promise<Re
   const utvarIdRaw = formData.get("utvarId") as string
   const utvarId = utvarIdRaw ? parseInt(utvarIdRaw) : null
   const stavRaw = formData.get("status") as string
-  const status = (stavRaw as SpisStatus) || spis.status
+  const status = stavRaw || spis.status
   const spracovatelIdRaw = formData.get("spracovatelId") as string
   const spracovatelId = spracovatelIdRaw ? parseInt(spracovatelIdRaw) : spis.spracovatelId
 
-  // When moving to VYBAVENY, check that all records are processed
-  if (status === "VYBAVENY" && spis.status !== "VYBAVENY") {
+  // When moving to Vybavený (StSpis3), check that all records are processed
+  if (status === "StSpis3" && spis.status !== "StSpis3") {
     const zaznamy = await prisma.spisZaznam.findMany({
       where: { spisId },
       include: { zaznam: { select: { stav: true, cisloZaznamu: true } } },
     })
-    const open = zaznamy.filter(sz => sz.zaznam.stav !== "VYBAVENY")
+    const open = zaznamy.filter(sz => sz.zaznam.stav !== "StZaz4")
     if (open.length > 0) {
       const nums = open.map(sz => sz.zaznam.cisloZaznamu).join(", ")
       return { error: `Nie je možné vybaviť spis – tieto záznamy nie sú vybavené: ${nums}` }
@@ -151,7 +150,7 @@ export async function addZaznamToSpis(spisId: number, zaznamId: number): Promise
     return { error: "Nemáte oprávnenie na úpravu tohto spisu." }
   }
   if (CLOSED_STATUSES.includes(spis.status)) return { error: "Vybavený spis nie je možné upravovať." }
-  if (zaznam.stav === "VYBAVENY") return { error: "Vybavený záznam nie je možné vložiť do spisu." }
+  if (zaznam.stav === "StZaz4") return { error: "Vybavený záznam nie je možné vložiť do spisu." }
 
   const exists = await prisma.spisZaznam.findUnique({
     where: { spisId_zaznamId: { spisId, zaznamId } },
@@ -202,6 +201,6 @@ export async function removeZaznamFromSpis(spisId: number, zaznamId: number): Pr
 // kept for backward compatibility — no longer called from new UI
 export async function uzatvoritSpis(spisId: number): Promise<Result> {
   const fd = new FormData()
-  fd.append("status", "VYBAVENY")
+  fd.append("status", "StSpis3")
   return { error: "Použite pole Stav v editačnom formulári." }
 }

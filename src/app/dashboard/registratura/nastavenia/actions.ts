@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { createAuditLog } from "@/lib/auditLog"
+import type { Role } from "@/generated/prisma/enums"
 
 // ─── Registratúrny plán ───────────────────────────────────────────────────────
 
@@ -90,31 +92,36 @@ export async function deletePlanItem(id: number): Promise<{ error?: string }> {
   return {}
 }
 
-export async function updateRegistraturaRoles(
-  userId: number,
-  hasPodatelna: boolean,
-  hasSpracovatel: boolean,
-): Promise<{ error?: string }> {
+const REG_ROLES: Role[] = ["SPRAVCA_REGISTRATURY", "PRACOVNIK_PODATELNE", "SPRACOVATEL_REGISTRATURY"]
+
+export async function setRegRoles(targetUserId: number, newRoles: Role[]): Promise<{ error?: string }> {
   const session = await getServerSession(authOptions)
-  if (!session?.user.roles.includes("SPRAVCA_REGISTRATURY")) {
-    return { error: "Nemáte oprávnenie." }
+  if (!session) return { error: "Nie ste prihlásený." }
+  if (!session.user.roles.includes("SPRAVCA_REGISTRATURY") && !session.user.roles.includes("SPRAVCA_APLIKACIE")) {
+    return { error: "Nemáte oprávnenie spravovať roly registratúry." }
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { roles: true },
-  })
-  if (!user) return { error: "Používateľ neexistuje." }
+  const invalid = newRoles.filter(r => !REG_ROLES.includes(r))
+  if (invalid.length > 0) return { error: "Neplatná rola." }
 
-  const otherRoles = user.roles.filter(
-    r => r !== "PRACOVNIK_PODATELNE" && r !== "SPRACOVATEL_REGISTRATURY",
-  )
-  const newRoles = [
-    ...otherRoles,
-    ...(hasPodatelna  ? (["PRACOVNIK_PODATELNE"]      as const) : []),
-    ...(hasSpracovatel ? (["SPRACOVATEL_REGISTRATURY"] as const) : []),
-  ]
+  const user = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true, roles: true } })
+  if (!user) return { error: "Používateľ nenájdený." }
 
-  await prisma.user.update({ where: { id: userId }, data: { roles: newRoles } })
-  return {}
+  const nonRegRoles = (user.roles as Role[]).filter(r => !REG_ROLES.includes(r))
+  const updatedRoles = [...nonRegRoles, ...newRoles]
+
+  try {
+    await prisma.user.update({ where: { id: targetUserId }, data: { roles: updatedRoles } })
+    await createAuditLog({
+      userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,
+      action: "UPDATE", entityType: "USER_REG_ROLES", entityId: targetUserId,
+      oldData: { regRoles: (user.roles as Role[]).filter(r => REG_ROLES.includes(r)) },
+      newData: { regRoles: newRoles },
+    })
+    revalidatePath("/dashboard/registratura/nastavenia")
+    return {}
+  } catch (e) {
+    console.error("[setRegRoles]", e)
+    return { error: "Nastala chyba." }
+  }
 }

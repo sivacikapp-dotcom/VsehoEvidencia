@@ -12,7 +12,7 @@ export default async function PodatelnaPage() {
     redirect("/dashboard")
   }
 
-  const [postaRaw, plans, spracovatelia] = await Promise.all([
+  const [postaRaw, plans, spracovatelia, subjekty] = await Promise.all([
     prisma.posta.findMany({
       orderBy: { createdAt: "desc" },
       include: {
@@ -25,6 +25,10 @@ export default async function PodatelnaPage() {
       where: { roles: { has: "SPRACOVATEL_REGISTRATURY" } },
       select: { id: true, firstName: true, lastName: true },
       orderBy: { lastName: "asc" },
+    }),
+    prisma.subjekt.findMany({
+      orderBy: { nazov: "asc" },
+      select: { id: true, meno: true, priezvisko: true, nazov: true, oddelenie: true, ulica: true, mesto: true, psc: true, identifikator: true },
     }),
   ])
 
@@ -52,6 +56,7 @@ export default async function PodatelnaPage() {
         posta={posta}
         plans={plans.map(p => ({ id: p.id, znacka: p.znacka, nazov: p.nazov }))}
         spracovatelia={spracovatelia}
+        subjekty={subjekty}
         canWrite={canWrite}
       />
     </div>

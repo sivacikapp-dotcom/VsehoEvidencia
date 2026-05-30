@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { createAuditLog } from "@/lib/auditLog"
 import { nextPostaNumber, nextZaznamNumber, currentYear } from "@/lib/regCounter"
-import type { PostaDirection, PostaSpusob } from "@/generated/prisma/enums"
+import type { PostaDirection } from "@/generated/prisma/enums"
 
 type Result = { error?: string; success?: boolean; id?: number }
 
@@ -36,7 +36,7 @@ export async function createPosta(formData: FormData): Promise<Result> {
         poradoveCislo,
         smer: formData.get("smer") as PostaDirection,
         datumDoruceOdoslania: datum,
-        sposob: formData.get("sposob") as PostaSpusob,
+        sposob: formData.get("sposob") as string,
         odosielatelPrijemcaNazov: nazov,
         odosielatelPrijemcaAdresa: (formData.get("adresa") as string)?.trim() || null,
         odosielatelPrijemcaIco: (formData.get("ico") as string)?.trim() || null,
@@ -81,7 +81,7 @@ export async function updatePosta(postaId: number, formData: FormData): Promise<
       data: {
         smer: formData.get("smer") as PostaDirection,
         datumDoruceOdoslania: datum,
-        sposob: formData.get("sposob") as PostaSpusob,
+        sposob: formData.get("sposob") as string,
         odosielatelPrijemcaNazov: nazov,
         odosielatelPrijemcaAdresa: (formData.get("adresa") as string)?.trim() || null,
         odosielatelPrijemcaIco: (formData.get("ico") as string)?.trim() || null,

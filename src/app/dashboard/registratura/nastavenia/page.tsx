@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect } from "next/navigation"
 import NastaveniaRegistraturyClient from "./NastaveniaRegistraturyClient"
+import { getAllCislonik, type CislonikTyp } from "@/lib/cislonik"
 
 export default async function NastaveniaRegistraturyPage() {
   const session = await getServerSession(authOptions)
@@ -10,22 +11,25 @@ export default async function NastaveniaRegistraturyPage() {
 
   if (!session.user.roles.includes("SPRAVCA_REGISTRATURY")) redirect("/dashboard")
 
-  const [rawUsers, rawPlan] = await Promise.all([
+  const TYPY: CislonikTyp[] = ["SPOSOB_DORUCENIA", "STAV_ZAZNAMU", "STAV_SPISU", "SPOSOB_VYBAVENIA"]
+  const REG_ROLES = ["SPRAVCA_REGISTRATURY", "PRACOVNIK_PODATELNE", "SPRACOVATEL_REGISTRATURY"]
+  const [rawUsers, rawPlan, ...cislonikArrays] = await Promise.all([
     prisma.user.findMany({
-      select: { id: true, firstName: true, lastName: true, roles: true },
-      orderBy: { lastName: "asc" },
+      select: { id: true, firstName: true, lastName: true, email: true, roles: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
     }),
     prisma.registraturnyPlan.findMany({
       orderBy: { znacka: "asc" },
     }),
+    ...TYPY.map(t => getAllCislonik(t)),
   ])
+  const cislonik = Object.fromEntries(TYPY.map((t, i) => [t, cislonikArrays[i]])) as Record<CislonikTyp, Awaited<ReturnType<typeof getAllCislonik>>>
 
   const users = rawUsers.map(u => ({
     id: u.id,
-    firstName: u.firstName,
-    lastName: u.lastName,
-    hasPodatelna:   u.roles.includes("PRACOVNIK_PODATELNE"),
-    hasSpracovatel: u.roles.includes("SPRACOVATEL_REGISTRATURY"),
+    name: `${u.firstName} ${u.lastName}`,
+    email: u.email,
+    regRoles: (u.roles as string[]).filter(r => REG_ROLES.includes(r)),
   }))
 
   const plan = rawPlan.map(p => ({
@@ -38,7 +42,7 @@ export default async function NastaveniaRegistraturyPage() {
 
   return (
     <div className="flex-1 overflow-auto p-8">
-      <NastaveniaRegistraturyClient users={users} plan={plan} />
+      <NastaveniaRegistraturyClient users={users} plan={plan} cislonik={cislonik} />
     </div>
   )
 }

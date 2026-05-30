@@ -3,8 +3,9 @@
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, ExternalLink, FolderOpen } from "lucide-react"
+import { MultiSelect } from "@/components/MultiSelect"
+import { DateRangeFilter } from "@/components/DateRangeFilter"
 import { spisStatusLabels, spisStatusColors } from "@/lib/regLabels"
-import type { SpisStatus } from "@/generated/prisma/enums"
 import { createSpis } from "./actions"
 import PlanTreePicker from "@/components/PlanTreePicker"
 
@@ -15,7 +16,7 @@ type SpisRow = {
   planZnacka: string
   planNazov: string
   spracovatel: string
-  status: SpisStatus
+  status: string
   datumOtvorenia: string
   datumUzatvorenia: string | null
   rokVyradenia: number | null
@@ -55,7 +56,15 @@ export default function SpisyClient({ spisy, plans, utvary, isAdmin, canCreate }
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
-  const [filterStatus, setFilterStatus] = useState<SpisStatus | "">("")
+  const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set())
+  const [filterYears, setFilterYears] = useState<Set<string>>(new Set())
+  const [filterDateOd, setFilterDateOd] = useState("")
+  const [filterDateDo, setFilterDateDo] = useState("")
+
+  const yearOptions = useMemo(() => {
+    const years = [...new Set(spisy.map(r => r.datumOtvorenia.slice(0, 4)))].sort().reverse()
+    return years.map(y => ({ value: y, label: y }))
+  }, [spisy])
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [showNew, setShowNew] = useState(false)
@@ -79,9 +88,12 @@ export default function SpisyClient({ spisy, plans, utvary, isAdmin, canCreate }
         r.planNazov.toLowerCase().includes(q)
       )
     }
-    if (filterStatus) rows = rows.filter(r => r.status === filterStatus)
+    if (filterStatuses.size > 0) rows = rows.filter(r => filterStatuses.has(r.status))
+    if (filterYears.size > 0) rows = rows.filter(r => filterYears.has(r.datumOtvorenia.slice(0, 4)))
+    if (filterDateOd) rows = rows.filter(r => r.datumOtvorenia >= filterDateOd)
+    if (filterDateDo) rows = rows.filter(r => r.datumOtvorenia <= filterDateDo)
     return rows
-  }, [spisy, search, filterStatus])
+  }, [spisy, search, filterStatuses, filterYears, filterDateOd, filterDateDo])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -127,13 +139,26 @@ export default function SpisyClient({ spisy, plans, utvary, isAdmin, canCreate }
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Hľadať..."
             className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56" />
         </div>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as SpisStatus | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Stav: všetky</option>
-          {(Object.entries(spisStatusLabels) as [SpisStatus, string][]).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        {(search || filterStatus) && (
-          <button onClick={() => { setSearch(""); setFilterStatus("") }}
+        <MultiSelect
+          placeholder="Stav"
+          selected={filterStatuses}
+          onChange={setFilterStatuses}
+          options={Object.entries(spisStatusLabels).filter(([k]) => k.startsWith("StSpis")).map(([k, v]) => ({ value: k, label: v }))}
+        />
+        <MultiSelect
+          placeholder="Rok"
+          selected={filterYears}
+          onChange={setFilterYears}
+          options={yearOptions}
+        />
+        <DateRangeFilter
+          od={filterDateOd}
+          do={filterDateDo}
+          onOd={setFilterDateOd}
+          onDo={setFilterDateDo}
+        />
+        {(search || filterStatuses.size > 0 || filterYears.size > 0 || filterDateOd || filterDateDo) && (
+          <button onClick={() => { setSearch(""); setFilterStatuses(new Set()); setFilterYears(new Set()); setFilterDateOd(""); setFilterDateDo("") }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors">
             <X size={12} /> Zrušiť
           </button>

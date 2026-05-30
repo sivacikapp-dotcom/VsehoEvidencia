@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { redirect, notFound } from "next/navigation"
 import SpisDetailClient from "./SpisDetailClient"
+import { getCislonik } from "@/lib/cislonik"
 
 function computeForma(formy: string[]): "ELEKTRONICKY" | "NEELEKTRONICKY" | "KOMBINOVANY" | null {
   if (formy.length === 0) return null
@@ -52,7 +53,7 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
   if (!spis) notFound()
   if (!isAdmin && spis.spracovatelId !== userId) redirect("/dashboard/registratura/spisy")
 
-  const [plans, spracovatelov, utvary, availableZaznamy] = await Promise.all([
+  const [plans, spracovatelov, utvary, availableZaznamy, stavSpisOptions] = await Promise.all([
     prisma.registraturnyPlan.findMany({
       orderBy: { znacka: "asc" },
       select: { id: true, znacka: true, nazov: true, lehota: true, maArchivnu: true },
@@ -71,6 +72,7 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
       },
       orderBy: { cisloZaznamu: "asc" },
     }),
+    getCislonik("STAV_SPISU"),
   ])
 
   const zaznamyFormy = spis.zaznamy.map(sz => sz.zaznam.formaZaznamu)
@@ -121,6 +123,7 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
             stav: z.stav, kategoria: z.kategoria,
             planZnacka: z.plan?.znacka ?? "", planNazov: z.plan?.nazov ?? "",
           }))}
+        stavSpisOptions={stavSpisOptions.map(s => ({ kod: s.kod, popis: s.popis }))}
         canManage={canManage}
         isAdmin={isAdmin}
       />

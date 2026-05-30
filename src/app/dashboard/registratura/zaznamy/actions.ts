@@ -9,7 +9,7 @@ import { nextZaznamNumber, currentYear } from "@/lib/regCounter"
 import { writeFile, mkdir, unlink } from "fs/promises"
 import { join } from "path"
 import { createHash, randomUUID } from "crypto"
-import type { ZaznamKategoria, ZaznamStav, SposobVybavenia, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
+import type { ZaznamKategoria, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
 
 type Result = { error?: string; success?: boolean; id?: number }
 
@@ -56,7 +56,7 @@ export async function createZaznam(formData: FormData): Promise<Result> {
 
   const rok = currentYear()
   const cisloZaznamu = await nextZaznamNumber(rok)
-  const stav: ZaznamStav = kategoria === "PRIJATY" ? "PRIDELENY" : "NOVY"
+  const stav = kategoria === "PRIJATY" ? "StZaz1" : "StZaz2"
 
   try {
     const created = await prisma.regZaznam.create({
@@ -108,7 +108,7 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
   if (!canManageZaznam(session.user.roles as string[], zaznam, parseInt(session.user.id))) {
     return { error: "Nemáte oprávnenie na úpravu tohto záznamu." }
   }
-  if (zaznam.stav === "V_SPISE" || zaznam.stav === "VYBAVENY") {
+  if (zaznam.stav === "StZaz3" || zaznam.stav === "StZaz4") {
     return { error: "Uzavretý alebo vybavený záznam nie je možné upravovať." }
   }
 
@@ -121,15 +121,13 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
   const rokRaw = formData.get("rok") as string
   const rok = rokRaw ? parseInt(rokRaw) : zaznam.rok
   const stavRaw = formData.get("stav") as string
-  const stav = (stavRaw as ZaznamStav) || zaznam.stav
+  const stav = stavRaw || zaznam.stav
   const spracovatelIdRaw = formData.get("spracovatelId") as string
   const spracovatelId = spracovatelIdRaw ? parseInt(spracovatelIdRaw) : zaznam.spracovatelId
   const sposobRaw = formData.get("sposobVybavenia") as string
-  const sposobVybavenia: SposobVybavenia | null = stav === "VYBAVENY" && sposobRaw
-    ? (sposobRaw as SposobVybavenia)
-    : null
+  const sposobVybavenia: string | null = stav === "StZaz4" && sposobRaw ? sposobRaw : null
 
-  if (stav === "VYBAVENY" && !sposobVybavenia) {
+  if (stav === "StZaz4" && !sposobVybavenia) {
     return { error: "Pre stav Vybavený je potrebné vybrať spôsob vybavenia." }
   }
 
@@ -165,7 +163,7 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
 
 // ─── CHANGE STAV ──────────────────────────────────────────────────────────────
 
-export async function changeZaznamStav(zaznamId: number, newStav: ZaznamStav, sposobVybavenia?: SposobVybavenia): Promise<Result> {
+export async function changeZaznamStav(zaznamId: number, newStav: string, sposobVybavenia?: string): Promise<Result> {
   const session = await getServerSession(authOptions)
   if (!session) return { error: "Nie ste prihlásený." }
 
@@ -174,18 +172,7 @@ export async function changeZaznamStav(zaznamId: number, newStav: ZaznamStav, sp
   if (!canManageZaznam(session.user.roles as string[], zaznam, parseInt(session.user.id))) {
     return { error: "Nemáte oprávnenie." }
   }
-
-  // Validate allowed transitions
-  const allowed: Record<ZaznamStav, ZaznamStav[]> = {
-    PRIDELENY: ["VYBAVENY"],
-    NOVY: ["VYBAVENY"],
-    V_SPISE: ["VYBAVENY"],
-    VYBAVENY: [],
-  }
-  if (!allowed[zaznam.stav].includes(newStav)) {
-    return { error: `Neplatný prechod stavu.` }
-  }
-  if (newStav === "VYBAVENY" && !sposobVybavenia) {
+  if (newStav === "StZaz4" && !sposobVybavenia) {
     return { error: "Pre vybavenie záznamu je potrebné vybrať spôsob vybavenia." }
   }
 

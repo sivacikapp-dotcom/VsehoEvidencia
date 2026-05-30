@@ -3,13 +3,16 @@
 import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Plus, Search, X, ArrowUpDown, ChevronUp, ChevronDown, ExternalLink, Inbox, Send } from "lucide-react"
+import { FilterSelect } from "@/components/FilterSelect"
+import { MultiSelect } from "@/components/MultiSelect"
+import { DateRangeFilter } from "@/components/DateRangeFilter"
 import {
   regZaznamTypeLabels,
   zaznamKategoriaLabels, zaznamKategoriaColors,
   zaznamStavLabels, zaznamStavColors,
   zaznamDovernostLabels,
 } from "@/lib/regLabels"
-import type { ZaznamKategoria, ZaznamStav, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
+import type { ZaznamKategoria, ZaznamDovernost, RegZaznamType } from "@/generated/prisma/enums"
 import { createZaznam } from "./actions"
 import ContactFields, { type SubjektItem } from "@/components/ContactFields"
 
@@ -22,7 +25,7 @@ type ZaznamRow = {
   utvar: string | null
   formaZaznamu: RegZaznamType
   vec: string | null
-  stav: ZaznamStav
+  stav: string
   dovernost: ZaznamDovernost
   pocetSpisov: number
   pocetPriloh: number
@@ -65,8 +68,16 @@ export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canC
   const router = useRouter()
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState("")
-  const [filterStav, setFilterStav] = useState<ZaznamStav | "">("")
+  const [filterStavy, setFilterStavy] = useState<Set<string>>(new Set())
   const [filterKategoria, setFilterKategoria] = useState<ZaznamKategoria | "">("")
+  const [filterYears, setFilterYears] = useState<Set<string>>(new Set())
+  const [filterDateOd, setFilterDateOd] = useState("")
+  const [filterDateDo, setFilterDateDo] = useState("")
+
+  const yearOptions = useMemo(() => {
+    const years = [...new Set(zaznamy.map(r => r.createdAt.slice(0, 4)))].sort().reverse()
+    return years.map(y => ({ value: y, label: y }))
+  }, [zaznamy])
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [showNew, setShowNew] = useState(false)
@@ -88,10 +99,13 @@ export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canC
         (r.vec ?? "").toLowerCase().includes(q)
       )
     }
-    if (filterStav) rows = rows.filter(r => r.stav === filterStav)
+    if (filterStavy.size > 0) rows = rows.filter(r => filterStavy.has(r.stav))
     if (filterKategoria) rows = rows.filter(r => r.kategoria === filterKategoria)
+    if (filterYears.size > 0) rows = rows.filter(r => filterYears.has(r.createdAt.slice(0, 4)))
+    if (filterDateOd) rows = rows.filter(r => r.createdAt >= filterDateOd)
+    if (filterDateDo) rows = rows.filter(r => r.createdAt <= filterDateDo)
     return rows
-  }, [zaznamy, search, filterStav, filterKategoria])
+  }, [zaznamy, search, filterStavy, filterKategoria, filterYears, filterDateOd, filterDateDo])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -149,22 +163,35 @@ export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canC
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Hľadať..."
             className="pl-8 pr-3 py-1.5 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 w-56" />
         </div>
-        <select value={filterKategoria} onChange={e => setFilterKategoria(e.target.value as ZaznamKategoria | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Typ: všetky</option>
-          <option value="PRIJATY">Prijatý</option>
-          <option value="VYTVORENY">Vytvorený</option>
-        </select>
-        <select value={filterStav} onChange={e => setFilterStav(e.target.value as ZaznamStav | "")}
-          className="py-1.5 px-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500">
-          <option value="">Stav: všetky</option>
-          <option value="PRIDELENY">Pridelený</option>
-          <option value="NOVY">Vytvorený</option>
-          <option value="V_SPISE">V spise</option>
-          <option value="VYBAVENY">Vybavený</option>
-        </select>
-        {(search || filterStav || filterKategoria) && (
-          <button onClick={() => { setSearch(""); setFilterStav(""); setFilterKategoria("") }}
+        <FilterSelect
+          label="Typ"
+          value={filterKategoria}
+          onChange={v => setFilterKategoria(v as ZaznamKategoria | "")}
+          options={[
+            { value: "PRIJATY", label: "Prijatý" },
+            { value: "VYTVORENY", label: "Vytvorený" },
+          ]}
+        />
+        <MultiSelect
+          placeholder="Stav"
+          selected={filterStavy}
+          onChange={setFilterStavy}
+          options={Object.entries(zaznamStavLabels).map(([k, v]) => ({ value: k, label: v }))}
+        />
+        <MultiSelect
+          placeholder="Rok"
+          selected={filterYears}
+          onChange={setFilterYears}
+          options={yearOptions}
+        />
+        <DateRangeFilter
+          od={filterDateOd}
+          do={filterDateDo}
+          onOd={setFilterDateOd}
+          onDo={setFilterDateDo}
+        />
+        {(search || filterStavy.size > 0 || filterKategoria || filterYears.size > 0 || filterDateOd || filterDateDo) && (
+          <button onClick={() => { setSearch(""); setFilterStavy(new Set()); setFilterKategoria(""); setFilterYears(new Set()); setFilterDateOd(""); setFilterDateDo("") }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors">
             <X size={12} /> Zrušiť
           </button>

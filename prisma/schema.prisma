@@ -666,6 +666,20 @@ model UserUtvar {
   @@id([userId, utvarId])
 }
 
+// ─── Číselníky ────────────────────────────────────────────────────────────────
+
+model RegCislonik {
+  id      Int     @id @default(autoincrement())
+  typ     String
+  kod     String
+  popis   String
+  poradie Int     @default(0)
+  aktivne Boolean @default(true)
+
+  @@unique([typ, kod])
+  @@index([typ])
+}
+
 // ─── Adresár subjektov ────────────────────────────────────────────────────────
 
 model Subjekt {
@@ -689,13 +703,6 @@ enum PostaDirection {
   ODOSLANA
 }
 
-enum PostaSpusob {
-  EMAIL
-  POSTA
-  UPVS
-  OSOBNE
-}
-
 enum PostaStatus {
   ZAREGISTROVANA
   PREKLASIFIKOVANA
@@ -711,31 +718,10 @@ enum ZaznamKategoria {
   VYTVORENY
 }
 
-enum ZaznamStav {
-  PRIDELENY   // For PRIJATY: "Pridelený"
-  NOVY        // For VYTVORENY: "Vytvorený"
-  V_SPISE     // Both: "V spise"
-  VYBAVENY    // Both: "Vybavený"
-}
-
-enum SposobVybavenia {
-  VZAL_NA_VEDOMIE  // PRIJATY: "Vzal na vedomie"
-  ODPOVEDU         // PRIJATY: "Odpoveďou"
-  ZALOZENY         // VYTVORENY: "Založený"
-  ODOSLANY         // VYTVORENY: "Odoslaný"
-}
-
 enum ZaznamDovernost {
   VEREJNE
   INTERNE
   DOVERNE
-}
-
-enum SpisStatus {
-  OTVORENY
-  ODLOZENY
-  VYBAVENY
-  UZATVORENY
 }
 
 model RegCounter {
@@ -761,7 +747,7 @@ model Posta {
   poradoveCislo              String         @unique
   smer                       PostaDirection
   datumDoruceOdoslania       DateTime
-  sposob                     PostaSpusob
+  sposob                     String
   odosielatelPrijemcaNazov   String
   odosielatelPrijemcaAdresa  String?
   odosielatelPrijemcaIco     String?
@@ -806,8 +792,8 @@ model RegZaznam {
   formaZaznamu  RegZaznamType     @default(ELEKTRONICKY)
   vec           String?
   popis         String?
-  stav          ZaznamStav        @default(PRIDELENY)
-  sposobVybavenia SposobVybavenia?
+  stav          String            @default("StZaz1")
+  sposobVybavenia String?
   dovernost     ZaznamDovernost   @default(INTERNE)
   odosielatel   ZaznamOdosielatel?
   adresati      ZaznamAdresat[]
@@ -884,7 +870,7 @@ model Spis {
   datumOtvorenia   DateTime          @default(now())
   datumUzatvorenia DateTime?
   rokVyradenia     Int?
-  status           SpisStatus        @default(OTVORENY)
+  status           String            @default("StSpis1")
   zaznamy          SpisZaznam[]
   createdById      Int
   createdBy        User              @relation("SpisCreatedBy", fields: [createdById], references: [id])

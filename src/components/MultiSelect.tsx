@@ -26,8 +26,8 @@ export function MultiSelect({
     selected.size === 0
       ? placeholder
       : selected.size === 1
-        ? options.find((o) => selected.has(o.value))?.label ?? placeholder
-        : `${placeholder} · ${selected.size}`
+        ? `${placeholder}: ${options.find(o => selected.has(o.value))?.label ?? "?"}`
+        : `${placeholder}: ${selected.size} vybrané`
 
   return (
     <div className="relative">
@@ -41,11 +41,6 @@ export function MultiSelect({
         }`}
       >
         <span className="whitespace-nowrap">{label}</span>
-        {selected.size > 0 && (
-          <span className="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-semibold shrink-0">
-            {selected.size}
-          </span>
-        )}
         <ChevronDown
           size={13}
           className={`text-current opacity-60 transition-transform shrink-0 ${open ? "rotate-180" : ""}`}

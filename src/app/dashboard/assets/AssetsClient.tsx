@@ -4,6 +4,8 @@ import { useState, useMemo, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Plus, Search, ChevronDown, ChevronUp, ArrowUpDown, Loader2, RotateCcw, UserPlus, ExternalLink, X, Clock as ClockIcon } from "lucide-react"
+import { MultiSelect } from "@/components/MultiSelect"
+import { FilterSelect } from "@/components/FilterSelect"
 import NewAssetModal from "./NewAssetModal"
 import AssignModal from "./AssignModal"
 import { returnAsset } from "./actions"
@@ -17,7 +19,7 @@ import {
   functionStatusColors,
   assetKindLabels,
 } from "@/lib/labels"
-import { AssetType, Brand, UsagePlace, AllocationStatus } from "@/generated/prisma/enums"
+import { AssetType, Brand, UsagePlace, AllocationStatus, AssetKind } from "@/generated/prisma/enums"
 import type { FunctionStatus, Role } from "@/generated/prisma/enums"
 import { useTablePrefs, type ColDef } from "@/lib/useTablePrefs"
 import { useColResize } from "@/lib/useColResize"
@@ -70,77 +72,13 @@ function Badge({ label, colorCls }: { label: string; colorCls: string }) {
 const inputCls =
   "border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
 
-function MultiSelect({
-  placeholder, options, selected, onChange,
-}: {
-  placeholder: string
-  options: { value: string; label: string }[]
-  selected: Set<string>
-  onChange: (next: Set<string>) => void
-}) {
-  const [open, setOpen] = useState(false)
-  function toggle(value: string) {
-    const next = new Set(selected)
-    next.has(value) ? next.delete(value) : next.add(value)
-    onChange(next)
-  }
-  const label =
-    selected.size === 0
-      ? placeholder
-      : selected.size === 1
-        ? options.find((o) => selected.has(o.value))?.label ?? placeholder
-        : `${placeholder} · ${selected.size}`
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-1.5 pl-3 pr-2 py-1.5 text-sm rounded-lg border transition-colors ${
-          selected.size > 0
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300"
-            : "border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
-        }`}
-      >
-        <span className="whitespace-nowrap">{label}</span>
-        {selected.size > 0 && (
-          <span className="bg-blue-600 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center font-semibold shrink-0">
-            {selected.size}
-          </span>
-        )}
-        <ChevronDown size={13} className={`text-current opacity-60 transition-transform shrink-0 ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 z-20 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg min-w-[180px] max-h-64 overflow-y-auto py-1">
-            {selected.size > 0 && (
-              <>
-                <button type="button" onClick={() => onChange(new Set())} className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 hover:bg-gray-50 dark:hover:bg-gray-700">
-                  <X size={11} />Zrušiť výber
-                </button>
-                <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
-              </>
-            )}
-            {options.map(({ value, label: optLabel }) => {
-              const checked = selected.has(value)
-              return (
-                <label key={value} className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer transition-colors ${checked ? "bg-blue-50 dark:bg-blue-900/30" : "hover:bg-gray-50 dark:hover:bg-gray-700"}`}>
-                  <input type="checkbox" checked={checked} onChange={() => toggle(value)} className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 shrink-0" />
-                  <span className={`text-sm ${checked ? "text-blue-700 dark:text-blue-300 font-medium" : "text-gray-700 dark:text-gray-300"}`}>{optLabel}</span>
-                </label>
-              )
-            })}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 const typeOptions = (Object.keys(assetTypeLabels) as AssetType[]).map(k => ({ value: k, label: assetTypeLabels[k] }))
 const brandOptions = (Object.keys(brandLabels) as Brand[]).map(k => ({ value: k, label: brandLabels[k] }))
 const placeOptions = (Object.keys(usagePlaceLabels) as UsagePlace[]).map(k => ({ value: k, label: usagePlaceLabels[k] }))
 const statusOptions = (Object.keys(allocationStatusLabels) as AllocationStatus[]).map(k => ({ value: k, label: allocationStatusLabels[k] }))
+const functionStatusOptions = (Object.keys(functionStatusLabels) as FunctionStatus[]).map(k => ({ value: k, label: functionStatusLabels[k] }))
+const kindOptions = (Object.keys(assetKindLabels) as AssetKind[]).map(k => ({ value: k, label: assetKindLabels[k] }))
+const isSecurityOptions = [{ value: "true", label: "Áno" }, { value: "false", label: "Nie" }]
 
 const BP_INFO_COL: ColDef = { key: "bpInfo", label: "BP polia", defaultWidth: 220 }
 
@@ -204,6 +142,9 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
   const [filterBrands, setFilterBrands] = useState<Set<string>>(new Set())
   const [filterPlaces, setFilterPlaces] = useState<Set<string>>(new Set())
   const [filterStatuses, setFilterStatuses] = useState<Set<string>>(new Set())
+  const [filterFunctionStatuses, setFilterFunctionStatuses] = useState<Set<string>>(new Set())
+  const [filterKinds, setFilterKinds] = useState<Set<string>>(new Set())
+  const [filterIsSecurity, setFilterIsSecurity] = useState<"" | "true" | "false">("")
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
 
@@ -212,10 +153,11 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
   const { prefs, visibleCols, movableCols, toggleHidden, reorderCols, setWidth, reset, getWidth } = useTablePrefs(storageKey, cols)
   const { onResizeMouseDown } = useColResize(getWidth, setWidth)
 
-  const activeFiltersCount = filterTypes.size + filterBrands.size + filterPlaces.size + filterStatuses.size
+  const activeFiltersCount = filterTypes.size + filterBrands.size + filterPlaces.size + filterStatuses.size + filterFunctionStatuses.size + filterKinds.size + (filterIsSecurity !== "" ? 1 : 0)
 
   function clearAllFilters() {
-    setFilterTypes(new Set()); setFilterBrands(new Set()); setFilterPlaces(new Set()); setFilterStatuses(new Set()); setSearch("")
+    setFilterTypes(new Set()); setFilterBrands(new Set()); setFilterPlaces(new Set()); setFilterStatuses(new Set())
+    setFilterFunctionStatuses(new Set()); setFilterKinds(new Set()); setFilterIsSecurity(""); setSearch("")
   }
 
   function handleSort(key: SortKey) {
@@ -237,45 +179,84 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
     const vals = new Set(searchFiltered.filter(a =>
       (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
       (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
-      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus)) &&
+      (filterFunctionStatuses.size === 0 || filterFunctionStatuses.has(a.functionStatus)) &&
+      (filterKinds.size === 0 || filterKinds.has(a.kind)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
     ).map(a => a.type))
     return typeOptions.filter(opt => vals.has(opt.value) || filterTypes.has(opt.value))
-  }, [searchFiltered, filterBrands, filterPlaces, filterStatuses, filterTypes])
+  }, [searchFiltered, filterBrands, filterPlaces, filterStatuses, filterFunctionStatuses, filterKinds, filterIsSecurity, filterTypes])
 
   const availableBrandOptions = useMemo(() => {
     const vals = new Set(searchFiltered.filter(a =>
       (filterTypes.size === 0 || filterTypes.has(a.type)) &&
       (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
-      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus)) &&
+      (filterFunctionStatuses.size === 0 || filterFunctionStatuses.has(a.functionStatus)) &&
+      (filterKinds.size === 0 || filterKinds.has(a.kind)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
     ).map(a => a.brand))
     return brandOptions.filter(opt => vals.has(opt.value) || filterBrands.has(opt.value))
-  }, [searchFiltered, filterTypes, filterPlaces, filterStatuses, filterBrands])
+  }, [searchFiltered, filterTypes, filterPlaces, filterStatuses, filterFunctionStatuses, filterKinds, filterIsSecurity, filterBrands])
 
   const availablePlaceOptions = useMemo(() => {
     const vals = new Set(searchFiltered.filter(a =>
       (filterTypes.size === 0 || filterTypes.has(a.type)) &&
       (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
-      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus))
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus)) &&
+      (filterFunctionStatuses.size === 0 || filterFunctionStatuses.has(a.functionStatus)) &&
+      (filterKinds.size === 0 || filterKinds.has(a.kind)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
     ).map(a => a.usagePlace))
     return placeOptions.filter(opt => vals.has(opt.value) || filterPlaces.has(opt.value))
-  }, [searchFiltered, filterTypes, filterBrands, filterStatuses, filterPlaces])
+  }, [searchFiltered, filterTypes, filterBrands, filterStatuses, filterFunctionStatuses, filterKinds, filterIsSecurity, filterPlaces])
 
   const availableStatusOptions = useMemo(() => {
     const vals = new Set(searchFiltered.filter(a =>
       (filterTypes.size === 0 || filterTypes.has(a.type)) &&
       (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
-      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace))
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
+      (filterFunctionStatuses.size === 0 || filterFunctionStatuses.has(a.functionStatus)) &&
+      (filterKinds.size === 0 || filterKinds.has(a.kind)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
     ).map(a => a.allocationStatus))
     return statusOptions.filter(opt => vals.has(opt.value) || filterStatuses.has(opt.value))
-  }, [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses])
+  }, [searchFiltered, filterTypes, filterBrands, filterPlaces, filterFunctionStatuses, filterKinds, filterIsSecurity, filterStatuses])
+
+  const availableFunctionStatusOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterTypes.size === 0 || filterTypes.has(a.type)) &&
+      (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus)) &&
+      (filterKinds.size === 0 || filterKinds.has(a.kind)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
+    ).map(a => a.functionStatus))
+    return functionStatusOptions.filter(opt => vals.has(opt.value as FunctionStatus) || filterFunctionStatuses.has(opt.value))
+  }, [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses, filterKinds, filterIsSecurity, filterFunctionStatuses])
+
+  const availableKindOptions = useMemo(() => {
+    const vals = new Set(searchFiltered.filter(a =>
+      (filterTypes.size === 0 || filterTypes.has(a.type)) &&
+      (filterBrands.size === 0 || filterBrands.has(a.brand)) &&
+      (filterPlaces.size === 0 || filterPlaces.has(a.usagePlace)) &&
+      (filterStatuses.size === 0 || filterStatuses.has(a.allocationStatus)) &&
+      (filterFunctionStatuses.size === 0 || filterFunctionStatuses.has(a.functionStatus)) &&
+      (filterIsSecurity === "" || a.isSecurity === (filterIsSecurity === "true"))
+    ).map(a => a.kind))
+    return kindOptions.filter(opt => vals.has(opt.value as AssetKind) || filterKinds.has(opt.value))
+  }, [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses, filterFunctionStatuses, filterIsSecurity, filterKinds])
 
   const filtered = useMemo(() => searchFiltered.filter(a => {
     if (filterTypes.size > 0 && !filterTypes.has(a.type)) return false
     if (filterBrands.size > 0 && !filterBrands.has(a.brand)) return false
     if (filterPlaces.size > 0 && !filterPlaces.has(a.usagePlace)) return false
     if (filterStatuses.size > 0 && !filterStatuses.has(a.allocationStatus)) return false
+    if (filterFunctionStatuses.size > 0 && !filterFunctionStatuses.has(a.functionStatus)) return false
+    if (filterKinds.size > 0 && !filterKinds.has(a.kind)) return false
+    if (filterIsSecurity !== "" && a.isSecurity !== (filterIsSecurity === "true")) return false
     return true
-  }), [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses])
+  }), [searchFiltered, filterTypes, filterBrands, filterPlaces, filterStatuses, filterFunctionStatuses, filterKinds, filterIsSecurity])
 
   const sorted = useMemo(() => {
     if (!sortKey) return filtered
@@ -542,6 +523,9 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
           <MultiSelect placeholder="Značka" options={availableBrandOptions} selected={filterBrands} onChange={setFilterBrands} />
           <MultiSelect placeholder="Miesto" options={availablePlaceOptions} selected={filterPlaces} onChange={setFilterPlaces} />
           <MultiSelect placeholder="Pridelenie" options={availableStatusOptions} selected={filterStatuses} onChange={setFilterStatuses} />
+          <MultiSelect placeholder="Stav" options={availableFunctionStatusOptions} selected={filterFunctionStatuses} onChange={setFilterFunctionStatuses} />
+          <MultiSelect placeholder="Druh" options={availableKindOptions} selected={filterKinds} onChange={setFilterKinds} />
+          <FilterSelect label="Bezpečnostný" value={filterIsSecurity} onChange={v => setFilterIsSecurity(v as "" | "true" | "false")} options={isSecurityOptions} />
           {(activeFiltersCount > 0 || search) && (
             <button type="button" onClick={clearAllFilters} className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
               <X size={12} />Zrušiť filtre
