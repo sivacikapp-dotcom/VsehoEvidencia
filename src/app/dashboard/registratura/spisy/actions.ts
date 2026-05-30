@@ -95,7 +95,7 @@ export async function updateSpis(spisId: number, formData: FormData): Promise<Re
       where: { spisId },
       include: { zaznam: { select: { stav: true, cisloZaznamu: true } } },
     })
-    const open = zaznamy.filter(sz => sz.zaznam.stav !== "StZaz4")
+    const open = zaznamy.filter(sz => !["StZaz4", "VYBAVENY"].includes(sz.zaznam.stav))
     if (open.length > 0) {
       const nums = open.map(sz => sz.zaznam.cisloZaznamu).join(", ")
       return { error: `Nie je možné vybaviť spis – tieto záznamy nie sú vybavené: ${nums}` }

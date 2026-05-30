@@ -62,16 +62,16 @@ export const zaznamStavColors: Record<string, string> = {
 }
 
 // Spôsob vybavenia záznamu — dynamic via cislonik (StVyZa1..N)
-export const sposobVybaveniаLabels: Record<string, string> = {
+export const sposobVybavieniaLabels: Record<string, string> = {
   StVyZa1: "Vzal na vedomie",
   StVyZa2: "Odpoveďou",
   StVyZa3: "Založený",
   StVyZa4: "Odoslaný",
 }
 
-// Backward compat aliases (unused but exported to avoid import errors)
-export const sposobVybaveniaPrijatyLabels = sposobVybaveniаLabels
-export const sposobVybaveniаVytvorenyLabels = sposobVybaveniаLabels
+// Backward compat aliases
+export const sposobVybaveniaPrijatyLabels = sposobVybavieniaLabels
+export const sposobVybavieniaVytvorenyLabels = sposobVybavieniaLabels
 
 export const zaznamDovernostLabels: Record<ZaznamDovernost, string> = {
   VEREJNE: "Verejné",

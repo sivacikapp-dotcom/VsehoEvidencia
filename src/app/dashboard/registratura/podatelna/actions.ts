@@ -135,7 +135,7 @@ export async function prekloritDoRegistratury(
           formaZaznamu: typZaznamu,
           rok: year,
           kategoria: "PRIJATY",
-          stav: "PRIDELENY",
+          stav: "StZaz1",
           createdById: parseInt(session.user.id),
         },
       })

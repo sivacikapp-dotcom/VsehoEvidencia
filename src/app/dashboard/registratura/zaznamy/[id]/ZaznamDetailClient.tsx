@@ -13,7 +13,7 @@ import {
   zaznamKategoriaLabels, zaznamKategoriaColors,
   zaznamStavLabels, zaznamStavColors,
   zaznamDovernostLabels, zaznamDovernostColors,
-  sposobVybaveniаLabels,
+  sposobVybavieniaLabels,
   spisStatusColors, spisStatusLabels,
 } from "@/lib/regLabels"
 import type {
@@ -626,7 +626,7 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, spracovat
                 {zaznam.sposobVybavenia && (
                   <div>
                     <dt className="text-xs text-gray-500 dark:text-gray-400">Spôsob vybavenia</dt>
-                    <dd className="text-sm text-gray-900 dark:text-white mt-0.5">{sposobVybaveniаLabels[zaznam.sposobVybavenia]}</dd>
+                    <dd className="text-sm text-gray-900 dark:text-white mt-0.5">{sposobVybavieniaLabels[zaznam.sposobVybavenia]}</dd>
                   </div>
                 )}
                 <div>

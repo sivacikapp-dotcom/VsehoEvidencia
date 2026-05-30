@@ -75,7 +75,7 @@ export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canC
   const [filterDateDo, setFilterDateDo] = useState("")
 
   const yearOptions = useMemo(() => {
-    const years = [...new Set(zaznamy.map(r => r.createdAt.slice(0, 4)))].sort().reverse()
+    const years = [...new Set(zaznamy.map(r => String(r.rok)))].sort().reverse()
     return years.map(y => ({ value: y, label: y }))
   }, [zaznamy])
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
@@ -101,7 +101,7 @@ export default function ZaznamyClient({ zaznamy, utvary, subjekty, isAdmin, canC
     }
     if (filterStavy.size > 0) rows = rows.filter(r => filterStavy.has(r.stav))
     if (filterKategoria) rows = rows.filter(r => r.kategoria === filterKategoria)
-    if (filterYears.size > 0) rows = rows.filter(r => filterYears.has(r.createdAt.slice(0, 4)))
+    if (filterYears.size > 0) rows = rows.filter(r => filterYears.has(String(r.rok)))
     if (filterDateOd) rows = rows.filter(r => r.createdAt >= filterDateOd)
     if (filterDateDo) rows = rows.filter(r => r.createdAt <= filterDateDo)
     return rows
