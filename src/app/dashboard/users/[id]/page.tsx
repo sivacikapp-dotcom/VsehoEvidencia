@@ -35,6 +35,8 @@ export default async function UserCardPage({
       where: { id: userId },
       include: {
         supervisor: { select: { firstName: true, lastName: true } },
+        linkedUser: { select: { id: true, username: true } },
+        adminAccounts: { select: { id: true, username: true } },
         assetAssignments: {
           orderBy: { assignedAt: "desc" },
           include: {
@@ -114,10 +116,14 @@ export default async function UserCardPage({
       <UserCardClient
         user={{
           id: user.id,
+          username: user.username,
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
           roles: user.roles,
+          isAdminAccount: user.isAdminAccount,
+          linkedUser: user.linkedUser ?? null,
+          adminAccounts: user.adminAccounts,
           supervisorId: user.supervisorId,
           supervisorName: user.supervisor
             ? `${user.supervisor.firstName} ${user.supervisor.lastName}`

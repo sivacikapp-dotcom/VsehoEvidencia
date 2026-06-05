@@ -10,20 +10,33 @@ export default async function UtvaryAdminPage() {
   const callerRoles = (session.user as { roles?: string[] })?.roles ?? []
   if (!callerRoles.includes("SPRAVCA_APLIKACIE")) redirect("/dashboard")
 
-  const utvary = await prisma.utvar.findMany({
-    orderBy: { nazov: "asc" },
-    include: { _count: { select: { users: true } } },
-  })
+  const [utvaryRaw, allUsers] = await Promise.all([
+    prisma.utvar.findMany({
+      orderBy: { nazov: "asc" },
+      include: {
+        vedouci: { select: { id: true, firstName: true, lastName: true } },
+        users: {
+          select: { user: { select: { id: true, firstName: true, lastName: true, username: true } } },
+        },
+      },
+    }),
+    prisma.user.findMany({
+      where: { isAdminAccount: false },
+      select: { id: true, firstName: true, lastName: true },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    }),
+  ])
+
+  const utvary = utvaryRaw.map(u => ({
+    ...u,
+    users: u.users
+      .map(uu => uu.user)
+      .sort((a, b) => a.lastName.localeCompare(b.lastName, "sk")),
+  }))
 
   return (
     <div className="flex-1 overflow-auto">
-      <UtvaryAdminClient
-        utvary={utvary.map(u => ({
-          id: u.id,
-          nazov: u.nazov,
-          pocetPouzivatelov: u._count.users,
-        }))}
-      />
+      <UtvaryAdminClient utvary={utvary} allUsers={allUsers} />
     </div>
   )
 }

@@ -142,6 +142,8 @@ enum NotificationType {
   ACCOUNT_LOCKED
   SUSPICIOUS_LOGIN
   ASSET_CHANGE_REJECTED
+  ADMIN_PASSWORD_CHANGED
+  ADMIN_ROLE_CHANGED
 }
 
 enum AssetNoteType {
@@ -225,11 +227,24 @@ model Asset {
 
 model User {
   id           Int    @id @default(autoincrement())
+  username     String  @unique
   firstName    String
   lastName     String
-  email        String @unique
+  // email nie je @unique — dvaja účty (janci + admin.janci) môžu zdieľať firemný email
+  email        String
   password     String
   roles        Role[]
+
+  // Separácia identít: admin.janci má isAdminAccount=true a môže len rolu SPRAVCA_APLIKACIE
+  isAdminAccount Boolean @default(false)
+  // Soft link: admin.janci → janci (voliteľný)
+  linkedUserId   Int?
+  linkedUser     User?  @relation("AdminLink", fields: [linkedUserId], references: [id])
+  adminAccounts  User[] @relation("AdminLink")
+
+  // MFA — logika pripravená, aktivácia v ďalšej fáze
+  mfaEnabled   Boolean @default(false)
+  mfaSecret    String?
 
   supervisorId Int?
   supervisor   User?  @relation("UserToSupervisor", fields: [supervisorId], references: [id])
@@ -254,8 +269,9 @@ model User {
   loginAttempts  Int       @default(0)
   lockedUntil    DateTime?
 
-  // Útvar
-  utvary             UserUtvar[]
+  // Útvar (jeden používateľ môže byť vo viacerých útvaroch)
+  utvary        UserUtvar[]
+  vedouciUtvary Utvar[] @relation("UtvarVedouci")
 
   // Registratúra
   createdPostaItems  Posta[]     @relation("PostaCreatedBy")
@@ -629,17 +645,19 @@ model TravelExpenseReport {
 }
 
 model AuditLog {
-  id          Int      @id @default(autoincrement())
-  userId      Int?
-  userEmail   String?
-  userName    String?
-  action      String
-  entityType  String
-  entityId    String
-  entityLabel String?
-  oldData     Json?
-  newData     Json?
-  createdAt   DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  userId         Int?
+  userEmail      String?
+  userName       String?
+  actorUsername  String?
+  ipAddress      String?
+  action         String
+  entityType     String
+  entityId       String
+  entityLabel    String?
+  oldData        Json?
+  newData        Json?
+  createdAt      DateTime @default(now())
 
   @@index([entityType, entityId])
   @@index([userId])
@@ -651,6 +669,11 @@ model AuditLog {
 model Utvar {
   id        Int         @id @default(autoincrement())
   nazov     String      @unique
+  parentId  Int?
+  parent    Utvar?      @relation("UtvarHierarchy", fields: [parentId], references: [id])
+  children  Utvar[]     @relation("UtvarHierarchy")
+  vedouciId Int?
+  vedouci   User?       @relation("UtvarVedouci", fields: [vedouciId], references: [id], onDelete: SetNull)
   users     UserUtvar[]
   zaznamy   RegZaznam[]
   spisy     Spis[]

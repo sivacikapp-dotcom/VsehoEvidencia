@@ -1,11 +1,21 @@
 import { prisma } from "./prisma"
 
-export type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "LOGIN_SUCCESS" | "LOGIN_FAILURE" | "LOGOUT"
+export type AuditAction =
+  | "CREATE"
+  | "UPDATE"
+  | "DELETE"
+  | "LOGIN_SUCCESS"
+  | "LOGIN_FAILURE"
+  | "LOGOUT"
+  | "PASSWORD_CHANGE"
+  | "ROLE_CHANGE"
 
 interface AuditLogParams {
   userId?: number | null
   userEmail?: string | null
   userName?: string | null
+  actorUsername?: string | null
+  ipAddress?: string | null
   action: AuditAction
   entityType: string
   entityId: string | number
@@ -40,6 +50,8 @@ export async function createAuditLog(params: AuditLogParams): Promise<void> {
         userId: params.userId ?? null,
         userEmail: params.userEmail ?? null,
         userName: params.userName ?? null,
+        actorUsername: params.actorUsername ?? null,
+        ipAddress: params.ipAddress ?? null,
         action: params.action,
         entityType: params.entityType,
         entityId: String(params.entityId),

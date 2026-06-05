@@ -2,10 +2,10 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, Package, Clock, FileText, Building2, Pencil, Loader2, X, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, ClipboardList, CheckSquare, Square, Layers, Shield } from "lucide-react"
+import { ArrowLeft, Package, Clock, FileText, Building2, Pencil, Loader2, X, ChevronUp, ChevronDown, ArrowUpDown, RotateCcw, ClipboardList, CheckSquare, Square, Layers, Shield, ShieldCheck, Check, Link2, Link2Off, User as UserIcon } from "lucide-react"
 import { assetTypeLabels, brandLabels, functionStatusLabels, functionStatusColors } from "@/lib/labels"
 import type { Role, AssetType, Brand, FunctionStatus } from "@/generated/prisma/enums"
-import { setUserRoomAccess, setUserUtvary, updateUser } from "../actions"
+import { setUserRoomAccess, setUserUtvary, updateUser, updateUserIdentity, setLinkedUser } from "../actions"
 import { returnAsset } from "../../assets/actions"
 import { useRouter } from "next/navigation"
 import { useTablePrefs, type ColDef } from "@/lib/useTablePrefs"
@@ -92,10 +92,14 @@ const inputCls = "w-full border border-gray-300 dark:border-gray-600 bg-white da
 interface Props {
   user: {
     id: number
+    username: string
     firstName: string
     lastName: string
     email: string
     roles: Role[]
+    isAdminAccount: boolean
+    linkedUser: { id: number; username: string } | null
+    adminAccounts: { id: number; username: string }[]
     supervisorId: number | null
     supervisorName: string | null
   }
@@ -746,7 +750,7 @@ function UtvarModal({ userId, allUtvary, currentUtvarIds, onClose }: { userId: n
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Zaradenie do útvarov</h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Vyberte útvary, v ktorých je používateľ zaradený</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Používateľ môže byť zaradený vo viacerých útvaroch</p>
           </div>
           <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} /></button>
         </div>
@@ -785,11 +789,110 @@ function UtvarModal({ userId, allUtvary, currentUtvarIds, onClose }: { userId: n
   )
 }
 
+function LinkPersonModal({
+  adminUserId,
+  allUsers,
+  onClose,
+  onLinked,
+}: {
+  adminUserId: number
+  allUsers: AllUser[]
+  onClose: () => void
+  onLinked: () => void
+}) {
+  const [selectedId, setSelectedId] = useState<number | null>(null)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!selectedId) return
+    setPending(true); setError("")
+    const result = await setLinkedUser(adminUserId, selectedId)
+    setPending(false)
+    if (result.error) setError(result.error)
+    else onLinked()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Prepojiť s osobou</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Vyberte bežný účet, ktorý patrí tej istej osobe</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="px-6 py-4">
+            <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg px-4 py-3 mb-4">
+              <p className="text-xs text-orange-700 dark:text-orange-300">
+                Po prepojení sa meno, priezvisko a e-mail tohto admin účtu synchronizujú z vybranej osoby.
+              </p>
+            </div>
+            <select
+              className={inputCls}
+              value={selectedId ?? ""}
+              onChange={e => setSelectedId(e.target.value ? parseInt(e.target.value) : null)}
+              required
+            >
+              <option value="">— vyberte osobu —</option>
+              {allUsers.map(u => (
+                <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>
+              ))}
+            </select>
+            {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
+          </div>
+          <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">Zrušiť</button>
+            <button type="submit" disabled={pending || !selectedId} className="flex items-center gap-1.5 px-4 py-2 text-sm text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-60">
+              {pending && <Loader2 size={14} className="animate-spin" />}
+              {pending ? "Ukladám..." : <><Link2 size={14} />Prepojiť</>}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function UserCardClient({ user, assignments, roomAccesses, allRooms, utvary, allUtvary, allUsers, isAdmin, viewerUserId, viewerName, isManager = true, backUrl = "/dashboard/users" }: Props) {
+  const router = useRouter()
   const [tab, setTab] = useState<"current" | "history" | "rooms" | "utvary" | "roly">("current")
   const [showRoomModal, setShowRoomModal] = useState(false)
   const [showHandoverModal, setShowHandoverModal] = useState(false)
   const [showUtvarModal, setShowUtvarModal] = useState(false)
+  const [showLinkModal, setShowLinkModal] = useState(false)
+
+  // Inline edit identity
+  const [editingIdentity, setEditingIdentity] = useState(false)
+  const [idUsername, setIdUsername] = useState(user.username)
+  const [idEmail, setIdEmail] = useState(user.email)
+  const [idFirstName, setIdFirstName] = useState(user.firstName)
+  const [idLastName, setIdLastName] = useState(user.lastName)
+  const [idPending, setIdPending] = useState(false)
+  const [idError, setIdError] = useState("")
+
+  async function handleIdentitySubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setIdPending(true); setIdError("")
+    const res = await updateUserIdentity(user.id, idUsername, idEmail, idFirstName, idLastName)
+    setIdPending(false)
+    if (res.error) { setIdError(res.error); return }
+    router.refresh()
+    setEditingIdentity(false)
+  }
+
+  function handleIdentityCancel() {
+    setIdUsername(user.username)
+    setIdEmail(user.email)
+    setIdFirstName(user.firstName)
+    setIdLastName(user.lastName)
+    setIdError("")
+    setEditingIdentity(false)
+  }
 
   const current = assignments.filter(a => a.isCurrent)
   const history = assignments.filter(a => !a.isCurrent)
@@ -802,13 +905,134 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
 
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-6 mb-6">
         <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{user.lastName} {user.firstName}</h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">{user.email}</p>
-            <div className="flex flex-wrap gap-1.5 mt-3">
-              {user.roles.map(r => <span key={r} className={`text-sm px-2.5 py-1 rounded-full font-medium ${roleBadge[r]}`}>{roleLabel[r]}</span>)}
+          <div className="flex-1 min-w-0 mr-6">
+            <div className="flex items-center gap-2 mb-0.5">
+              {user.isAdminAccount && <ShieldCheck size={16} className="text-orange-500 shrink-0" />}
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{user.lastName} {user.firstName}</h1>
             </div>
-            {user.supervisorName && <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Nadriadený: <span className="text-gray-700 dark:text-gray-200">{user.supervisorName}</span></p>}
+
+            {editingIdentity ? (
+              <form onSubmit={handleIdentitySubmit} className="mt-3 space-y-2 max-w-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Meno</label>
+                    <input
+                      type="text"
+                      value={idFirstName}
+                      onChange={e => setIdFirstName(e.target.value)}
+                      required
+                      className={inputCls}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Priezvisko</label>
+                    <input
+                      type="text"
+                      value={idLastName}
+                      onChange={e => setIdLastName(e.target.value)}
+                      required
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Používateľské meno</label>
+                  <input
+                    type="text"
+                    value={idUsername}
+                    onChange={e => setIdUsername(e.target.value.toLowerCase())}
+                    required
+                    pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{1,49}"
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">E-mail</label>
+                  <input
+                    type="email"
+                    value={idEmail}
+                    onChange={e => setIdEmail(e.target.value)}
+                    required
+                    className={inputCls}
+                  />
+                </div>
+                {idError && <p className="text-xs text-red-600 dark:text-red-400">{idError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={idPending}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-60"
+                  >
+                    {idPending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    {idPending ? "Ukladám..." : "Uložiť"}
+                  </button>
+                  <button type="button" onClick={handleIdentityCancel} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800">
+                    Zrušiť
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className={`text-sm font-mono ${user.isAdminAccount ? "text-orange-600 dark:text-orange-400" : "text-gray-400 dark:text-gray-500"}`}>
+                    @{user.username}
+                  </span>
+                  <span className="text-gray-300 dark:text-gray-600">·</span>
+                  <span className="text-gray-500 dark:text-gray-400 text-sm">{user.email}</span>
+                  {isAdmin && (
+                    <button
+                      onClick={() => setEditingIdentity(true)}
+                      className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                      title="Upraviť meno a e-mail"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Prepojené účty */}
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  {user.linkedUser && (
+                    <Link
+                      href={`/dashboard/users/${user.linkedUser.id}`}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-medium hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                      title="Bežný účet tejto osoby"
+                    >
+                      <UserIcon size={11} />
+                      Bežný účet: @{user.linkedUser.username}
+                    </Link>
+                  )}
+                  {user.adminAccounts.map(a => (
+                    <Link
+                      key={a.id}
+                      href={`/dashboard/users/${a.id}`}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-50 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 text-xs font-medium hover:bg-orange-100 dark:hover:bg-orange-900/50 transition-colors"
+                      title="Administrátorský účet tejto osoby"
+                    >
+                      <ShieldCheck size={11} />
+                      Admin účet: @{a.username}
+                    </Link>
+                  ))}
+                  {/* Tlačidlo prepojenia — len pre admin účty bez existujúceho linku */}
+                  {isAdmin && user.isAdminAccount && !user.linkedUser && (
+                    <button
+                      onClick={() => setShowLinkModal(true)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500 text-xs hover:border-orange-400 hover:text-orange-600 dark:hover:text-orange-400 transition-colors"
+                      title="Prepojiť s bežným účtom osoby"
+                    >
+                      <Link2 size={11} />
+                      Prepojiť s osobou
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 mt-3">
+                  {user.roles.map(r => <span key={r} className={`text-sm px-2.5 py-1 rounded-full font-medium ${roleBadge[r]}`}>{roleLabel[r]}</span>)}
+                </div>
+                {user.supervisorName && <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Nadriadený: <span className="text-gray-700 dark:text-gray-200">{user.supervisorName}</span></p>}
+              </>
+            )}
           </div>
           <div className="flex flex-col items-end gap-3">
             <div className="flex gap-3 text-center">
@@ -943,6 +1167,14 @@ export default function UserCardClient({ user, assignments, roomAccesses, allRoo
       )}
       {showUtvarModal && (
         <UtvarModal userId={user.id} allUtvary={allUtvary} currentUtvarIds={utvary.map(u => u.utvarId)} onClose={() => setShowUtvarModal(false)} />
+      )}
+      {showLinkModal && (
+        <LinkPersonModal
+          adminUserId={user.id}
+          allUsers={allUsers}
+          onClose={() => setShowLinkModal(false)}
+          onLinked={() => { router.refresh(); setShowLinkModal(false) }}
+        />
       )}
     </div>
   )

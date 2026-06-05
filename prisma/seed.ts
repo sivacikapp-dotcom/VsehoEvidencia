@@ -12,9 +12,10 @@ async function main() {
   const hash = await bcrypt.hash("heslo123", 12)
 
   const user = await prisma.user.upsert({
-    where: { email: "admin@test.sk" },
+    where: { username: "admin" },
     update: {},
     create: {
+      username: "admin",
       firstName: "Admin",
       lastName: "Správca",
       email: "admin@test.sk",
@@ -23,12 +24,12 @@ async function main() {
     },
   })
 
-  console.log("Testovací používateľ vytvorený:", user.email)
+  console.log("Testovací používateľ vytvorený:", user.username)
   console.log("Heslo: heslo123")
 
   // Seed admin as document admin (via roles)
   await prisma.user.update({
-    where: { email: "admin@test.sk" },
+    where: { username: "admin" },
     data: { roles: { push: "SPRAVCA_DOKUMENTOV" } },
   })
 

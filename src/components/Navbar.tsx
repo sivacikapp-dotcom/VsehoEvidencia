@@ -7,7 +7,7 @@ import {
   Bell, X, LogOut, KeyRound, Sun, Moon, Loader2,
   Eye, EyeOff, ChevronDown, Timer,
   Package, RotateCcw, FileText, Trash2, Plane,
-  CheckCircle2, XCircle, ShieldAlert,
+  CheckCircle2, XCircle, ShieldAlert, ShieldCheck,
 } from "lucide-react"
 import type { Role } from "@/generated/prisma/enums"
 import { useTheme } from "./ThemeProvider"
@@ -26,7 +26,7 @@ export type SoftNotification = {
 }
 
 interface NavbarProps {
-  user: { name: string; email: string; roles: Role[] }
+  user: { name: string; email: string; roles: Role[]; username?: string | null; isAdminAccount?: boolean }
   notifications: SoftNotification[]
 }
 
@@ -78,6 +78,8 @@ const NOTIF_CONFIG: Record<string, { icon: React.ElementType; color: string }> =
   ACCOUNT_LOCKED:             { icon: ShieldAlert,  color: "text-red-500" },
   SUSPICIOUS_LOGIN:           { icon: ShieldAlert,  color: "text-orange-500" },
   ASSET_CHANGE_REJECTED:      { icon: XCircle,      color: "text-red-500" },
+  ADMIN_PASSWORD_CHANGED:     { icon: ShieldAlert,  color: "text-orange-500" },
+  ADMIN_ROLE_CHANGED:         { icon: ShieldCheck,  color: "text-orange-500" },
 }
 
 function formatRemaining(ms: number): string {
@@ -208,6 +210,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 // ── Main Navbar ───────────────────────────────────────────────────────────────
 
 export default function Navbar({ user, notifications }: NavbarProps) {
+  const isAdmin = user.isAdminAccount ?? false
   const router = useRouter()
   const { theme, toggle } = useTheme()
   const { data: sessionData, update } = useSession()
@@ -268,7 +271,21 @@ export default function Navbar({ user, notifications }: NavbarProps) {
 
   return (
     <>
-      <header className="h-14 shrink-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex items-center justify-end px-5 gap-1.5">
+      {/* ── Admin Mode Banner ── */}
+      {isAdmin && (
+        <div className="shrink-0 h-8 bg-orange-500 dark:bg-orange-600 flex items-center justify-center gap-2 px-4">
+          <ShieldCheck size={14} className="text-white" />
+          <span className="text-xs font-bold tracking-widest text-white uppercase">
+            Administrátorský režim
+          </span>
+          <ShieldCheck size={14} className="text-white" />
+        </div>
+      )}
+      <header className={`h-14 shrink-0 border-b flex items-center justify-end px-5 gap-1.5 ${
+        isAdmin
+          ? "bg-orange-50 dark:bg-orange-950/40 border-orange-200 dark:border-orange-800"
+          : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700"
+      }`}>
 
         {/* ── Notification Bell ── */}
         <div className="relative" ref={notifRef}>
@@ -334,10 +351,16 @@ export default function Navbar({ user, notifications }: NavbarProps) {
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => { setShowProfile(v => !v); setShowNotif(false) }}
-            className="flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            className={`flex items-center gap-2 pl-1.5 pr-2.5 py-1.5 rounded-lg transition-colors ${
+              isAdmin
+                ? "hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                : "hover:bg-gray-100 dark:hover:bg-gray-800"
+            }`}
           >
-            <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {initials}
+            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0 ${
+              isAdmin ? "bg-orange-500" : "bg-blue-600"
+            }`}>
+              {isAdmin ? <ShieldCheck size={14} /> : initials}
             </div>
             <span className="hidden sm:block text-sm font-medium text-gray-800 dark:text-gray-200 max-w-[140px] truncate">
               {user.name}
@@ -348,13 +371,18 @@ export default function Navbar({ user, notifications }: NavbarProps) {
           {showProfile && (
             <div className="absolute right-0 top-full mt-1.5 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl overflow-hidden z-50">
               {/* User info block */}
-              <div className="px-4 py-4 border-b border-gray-100 dark:border-gray-800">
+              <div className={`px-4 py-4 border-b ${isAdmin ? "border-orange-100 dark:border-orange-900/40 bg-orange-50/60 dark:bg-orange-950/30" : "border-gray-100 dark:border-gray-800"}`}>
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
-                    {initials}
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 ${isAdmin ? "bg-orange-500" : "bg-blue-600"}`}>
+                    {isAdmin ? <ShieldCheck size={18} /> : initials}
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
+                    {user.username && (
+                      <p className={`text-xs font-mono truncate ${isAdmin ? "text-orange-600 dark:text-orange-400" : "text-gray-400 dark:text-gray-500"}`}>
+                        @{user.username}
+                      </p>
+                    )}
                     <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
                   </div>
                 </div>

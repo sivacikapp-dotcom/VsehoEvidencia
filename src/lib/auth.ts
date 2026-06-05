@@ -28,17 +28,16 @@ async function notifyAccountLocked(userId: number, email: string, fullName: stri
   })
 }
 
-async function checkAndNotifySuspiciousLogin(email: string) {
+async function checkAndNotifySuspiciousLogin(username: string) {
   const since = new Date(Date.now() - SUSPICIOUS_WINDOW_MS)
   const count = await prisma.auditLog.count({
     where: {
       action: "LOGIN_FAILURE",
       entityType: "AUTH_SUSPICIOUS",
-      entityLabel: email,
+      entityLabel: username,
       createdAt: { gte: since },
     },
   })
-  // Notify at every multiple of MAX_ATTEMPTS to catch persistent attacks
   if (count > 0 && count % MAX_ATTEMPTS === 0) {
     const appAdmins = await prisma.user.findMany({
       where: { roles: { has: "SPRAVCA_APLIKACIE" } },
@@ -51,7 +50,7 @@ async function checkAndNotifySuspiciousLogin(email: string) {
         userId: u.id,
         type: "SUSPICIOUS_LOGIN" as const,
         title: "Podozrivé pokusy o prihlásenie",
-        message: `Zaznamenalo sa ${count} neúspešných pokusov o prihlásenie s emailom „${email}" (neexistujúci alebo zablokovaný účet) za posledných 24 hodín.`,
+        message: `Zaznamenalo sa ${count} neúspešných pokusov o prihlásenie s používateľským menom „${username}" (neexistujúci alebo zablokovaný účet) za posledných 24 hodín.`,
         mustAcknowledge: false,
       })),
     })
@@ -61,61 +60,67 @@ async function checkAndNotifySuspiciousLogin(email: string) {
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: "jwt",
-    maxAge: 2 * 60 * 60,  // 2 hodiny
-    updateAge: 5 * 60,    // obnoviť token pri aktivite (každých 5 min)
+    maxAge: 2 * 60 * 60,   // 2 hodiny
+    updateAge: 5 * 60,      // obnoviť token pri aktivite (každých 5 min)
   },
   providers: [
     CredentialsProvider({
       name: "credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        // Pole sa volá "email" kvôli kompatibilite s next-auth formulárom,
+        // ale hodnota obsahuje username (nie e-mail)
+        email: { label: "Používateľské meno", type: "text" },
         password: { label: "Heslo", type: "password" },
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        const email = credentials.email.trim().toLowerCase()
+        const username = credentials.email.trim().toLowerCase()
         const user = await prisma.user.findUnique({
-          where: { email },
+          where: { username },
           select: {
-            id: true, email: true, firstName: true, lastName: true,
+            id: true, username: true, email: true,
+            firstName: true, lastName: true,
             password: true, roles: true, supervisorId: true,
             loginAttempts: true, lockedUntil: true,
+            isAdminAccount: true,
           },
         })
 
-        // ── Unknown email ──────────────────────────────────────────────────
+        // ── Neznáme username ───────────────────────────────────────────────
         if (!user) {
           await createAuditLog({
             action: "LOGIN_FAILURE",
             entityType: "AUTH_SUSPICIOUS",
-            entityId: email,
-            entityLabel: email,
+            entityId: username,
+            entityLabel: username,
+            actorUsername: username,
             newData: { reason: "Používateľ neexistuje" },
           })
-          await checkAndNotifySuspiciousLogin(email)
+          await checkAndNotifySuspiciousLogin(username)
           return null
         }
 
         const fullName = `${user.firstName} ${user.lastName}`
 
-        // ── Locked account ─────────────────────────────────────────────────
+        // ── Zablokovaný účet ──────────────────────────────────────────────
         if (user.lockedUntil && user.lockedUntil > new Date()) {
           await createAuditLog({
             userId: user.id,
             userEmail: user.email,
             userName: fullName,
+            actorUsername: user.username ?? username,
             action: "LOGIN_FAILURE",
             entityType: "AUTH_SUSPICIOUS",
             entityId: user.id,
-            entityLabel: user.email,
+            entityLabel: user.username ?? user.email,
             newData: { reason: "Účet je zablokovaný" },
           })
-          await checkAndNotifySuspiciousLogin(email)
+          await checkAndNotifySuspiciousLogin(username)
           throw new Error("AccountLocked")
         }
 
-        // ── Wrong password ─────────────────────────────────────────────────
+        // ── Nesprávne heslo ───────────────────────────────────────────────
         const valid = await bcrypt.compare(credentials.password, user.password)
         if (!valid) {
           const newAttempts = user.loginAttempts + 1
@@ -130,10 +135,11 @@ export const authOptions: NextAuthOptions = {
               userId: user.id,
               userEmail: user.email,
               userName: fullName,
+              actorUsername: user.username ?? username,
               action: "LOGIN_FAILURE",
               entityType: "AUTH",
               entityId: user.id,
-              entityLabel: user.email,
+              entityLabel: user.username ?? user.email,
               newData: { reason: "Nesprávne heslo — účet zablokovaný", lockedUntil: lockedUntil.toISOString() },
             })
             await notifyAccountLocked(user.id, user.email, fullName, user.supervisorId)
@@ -147,17 +153,18 @@ export const authOptions: NextAuthOptions = {
               userId: user.id,
               userEmail: user.email,
               userName: fullName,
+              actorUsername: user.username ?? username,
               action: "LOGIN_FAILURE",
               entityType: "AUTH",
               entityId: user.id,
-              entityLabel: user.email,
+              entityLabel: user.username ?? user.email,
               newData: { reason: "Nesprávne heslo", attempt: newAttempts },
             })
             return null
           }
         }
 
-        // ── Successful login — reset counter ───────────────────────────────
+        // ── Úspešné prihlásenie — reset počítadla ─────────────────────────
         if (user.loginAttempts > 0 || user.lockedUntil) {
           await prisma.user.update({
             where: { id: user.id },
@@ -170,6 +177,8 @@ export const authOptions: NextAuthOptions = {
           email: user.email,
           name: fullName,
           roles: user.roles,
+          username: user.username,
+          isAdminAccount: user.isAdminAccount,
         }
       },
     }),
@@ -180,6 +189,10 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         token.roles = (user as any).roles
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        token.username = (user as any).username
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        token.isAdminAccount = (user as any).isAdminAccount
       }
       return token
     },
@@ -189,6 +202,10 @@ export const authOptions: NextAuthOptions = {
         ;(session.user as any).id = token.id
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ;(session.user as any).roles = token.roles
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(session.user as any).username = token.username
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(session.user as any).isAdminAccount = token.isAdminAccount
       }
       return session
     },
@@ -199,6 +216,8 @@ export const authOptions: NextAuthOptions = {
         userId: user.id ? parseInt(user.id) : null,
         userEmail: user.email ?? null,
         userName: user.name ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        actorUsername: (user as any).username ?? null,
         action: "LOGIN_SUCCESS",
         entityType: "AUTH",
         entityId: user.id ?? user.email ?? "?",
@@ -206,11 +225,12 @@ export const authOptions: NextAuthOptions = {
       })
     },
     async signOut({ token }) {
-      const t = token as { id?: string; email?: string; name?: string } | null
+      const t = token as { id?: string; email?: string; name?: string; username?: string } | null
       await createAuditLog({
         userId: t?.id ? parseInt(t.id) : null,
         userEmail: t?.email ?? null,
         userName: t?.name ?? null,
+        actorUsername: t?.username ?? null,
         action: "LOGOUT",
         entityType: "AUTH",
         entityId: t?.id ?? t?.email ?? "?",

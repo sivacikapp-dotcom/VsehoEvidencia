@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { Loader2 } from "lucide-react"
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
@@ -18,7 +18,8 @@ export default function LoginPage() {
     setError("")
 
     const result = await signIn("credentials", {
-      email,
+      // next-auth CredentialsProvider pole sa volá "email" — posielame username
+      email: username.trim().toLowerCase(),
       password,
       redirect: false,
     })
@@ -28,7 +29,7 @@ export default function LoginPage() {
     if (result?.error === "AccountLocked") {
       setError("Účet bol zablokovaný na 2 hodiny z dôvodu opakovaných neúspešných pokusov o prihlásenie.")
     } else if (result?.error) {
-      setError("Nesprávny email alebo heslo.")
+      setError("Nesprávne používateľské meno alebo heslo.")
     } else {
       router.push("/dashboard")
       router.refresh()
@@ -52,18 +53,18 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Email
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Používateľské meno
               </label>
               <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                autoComplete="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
                 className="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="meno@firma.sk"
+                placeholder="napr. janci alebo admin.janci"
               />
             </div>
 

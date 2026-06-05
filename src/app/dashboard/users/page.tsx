@@ -7,25 +7,37 @@ import UsersClient from "./UsersClient"
 const userInclude = {
   supervisor: { select: { id: true, firstName: true, lastName: true } },
   _count: { select: { assetAssignments: true } },
+  adminAccounts: { select: { id: true, username: true } },
+  utvary: { select: { utvar: { select: { id: true, nazov: true } } } },
+  vedouciUtvary: { select: { id: true, nazov: true } },
 } as const
 
 function mapUser(u: {
-  id: number; firstName: string; lastName: string; email: string
-  roles: string[]; supervisorId: number | null
+  id: number; username: string; firstName: string; lastName: string; email: string
+  roles: string[]; isAdminAccount: boolean; supervisorId: number | null; linkedUserId: number | null
   supervisor: { firstName: string; lastName: string } | null
   _count: { assetAssignments: number }
+  adminAccounts: { id: number; username: string }[]
+  utvary: { utvar: { id: number; nazov: string } }[]
+  vedouciUtvary: { id: number; nazov: string }[]
 }) {
   return {
     id: u.id,
+    username: u.username,
     firstName: u.firstName,
     lastName: u.lastName,
     email: u.email,
     roles: u.roles as import("@/generated/prisma/enums").Role[],
+    isAdminAccount: u.isAdminAccount,
+    linkedUserId: u.linkedUserId,
+    adminAccounts: u.adminAccounts,
     supervisorId: u.supervisorId,
     supervisorName: u.supervisor
       ? `${u.supervisor.firstName} ${u.supervisor.lastName}`
       : null,
     totalAssignments: u._count.assetAssignments,
+    utvary: u.utvary.map(uu => ({ id: uu.utvar.id, nazov: uu.utvar.nazov })),
+    vedouciUtvary: u.vedouciUtvary,
   }
 }
 

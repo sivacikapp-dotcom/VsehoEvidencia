@@ -60,6 +60,10 @@ export default async function DashboardLayout({
     name: session.user.name ?? "",
     email: session.user.email ?? "",
     roles: session.user.roles,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    username: (session.user as any).username ?? null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    isAdminAccount: (session.user as any).isAdminAccount ?? false,
   }
 
   return (
