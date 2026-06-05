@@ -39,18 +39,52 @@ export async function createAgenda(formData: FormData) {
   const name = (formData.get("name") as string)?.trim()
   if (!name) return { error: "Názov agendy je povinný" }
 
-  try {
-    const created = await prisma.agenda.create({ data: { name } })
-    await createAuditLog({
-      userId, userEmail: session.user.email, userName: session.user.name,
-      action: "CREATE", entityType: "AGENDA", entityId: created.id, entityLabel: created.name,
-      newData: { name: created.name },
-    })
-    revalidatePath("/dashboard/dokumenty")
-    return { success: true }
-  } catch {
+  const skratkaRaw = (formData.get("skratka") as string)?.trim().toUpperCase()
+  const skratka = skratkaRaw || null
+  if (skratka && !/^[A-Z]{2,3}$/.test(skratka)) return { error: "Skratka musí obsahovať 2 až 3 veľké písmená (A–Z)" }
+
+  if (await prisma.agenda.findUnique({ where: { name }, select: { id: true } })) {
     return { error: "Agenda s týmto názvom už existuje" }
   }
+  if (skratka && await prisma.agenda.findUnique({ where: { skratka }, select: { id: true } })) {
+    return { error: "Skratka je už obsadená inou agendou" }
+  }
+
+  const created = await prisma.agenda.create({ data: { name, skratka } })
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "AGENDA", entityId: created.id, entityLabel: created.name,
+    newData: { name: created.name, skratka: created.skratka },
+  })
+  revalidatePath("/dashboard/dokumenty")
+  return { success: true }
+}
+
+export async function updateAgendaSkratka(agendaId: number, skratkaInput: string) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const user = await getUserDocContext(userId)
+  if (!user?.roles.includes("SPRAVCA_DOKUMENTOV")) throw new Error("Len správca dokumentov môže upravovať skratku agendy")
+
+  const skratka = skratkaInput.trim().toUpperCase() || null
+  if (skratka && !/^[A-Z]{2,3}$/.test(skratka)) return { error: "Skratka musí obsahovať 2 až 3 veľké písmená (A–Z)" }
+
+  if (skratka) {
+    const conflict = await prisma.agenda.findFirst({
+      where: { skratka, NOT: { id: agendaId } },
+      select: { id: true },
+    })
+    if (conflict) return { error: "Skratka je už obsadená inou agendou" }
+  }
+
+  await prisma.agenda.update({ where: { id: agendaId }, data: { skratka } })
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "AGENDA", entityId: agendaId, entityLabel: null,
+    newData: { skratka },
+  })
+  revalidatePath("/dashboard/dokumenty")
+  return { success: true }
 }
 
 export async function deleteAgenda(agendaId: number) {
@@ -86,7 +120,7 @@ export async function createDocument(formData: FormData) {
   const confidentiality = formData.get("confidentiality") as string
   const file = formData.get("priloha") as File | null
 
-  if (!znacka) return { error: "Značka je povinná" }
+  if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
 
@@ -120,6 +154,12 @@ export async function createDocument(formData: FormData) {
     include: { agenda: { select: { name: true } } },
   })
 
+  const gestorIdRaw = formData.get("gestorId")
+  const gestorId = gestorIdRaw ? parseInt(gestorIdRaw as string) : null
+  if (gestorId) {
+    await prisma.documentGestor.create({ data: { userId: gestorId, documentId: newDoc.id } })
+  }
+
   await notifyDocumentAdded(
     newDoc.id,
     znacka,
@@ -132,7 +172,7 @@ export async function createDocument(formData: FormData) {
   await createAuditLog({
     userId, userEmail: session.user.email, userName: session.user.name,
     action: "CREATE", entityType: "DOCUMENT", entityId: newDoc.id, entityLabel: `${znacka} – ${nazov}`,
-    newData: { znacka, nazov, confidentiality: newDoc.confidentiality, agendaId },
+    newData: { znacka, nazov, confidentiality: newDoc.confidentiality, agendaId, gestorId },
   })
   revalidatePath(`/dashboard/dokumenty/${agendaId}`)
   return { success: true }
@@ -159,7 +199,7 @@ export async function updateDocument(formData: FormData) {
   const file = formData.get("priloha") as File | null
   const removePriloha = formData.get("removePriloha") === "true"
 
-  if (!znacka) return { error: "Značka je povinná" }
+  if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
 
@@ -298,7 +338,7 @@ export async function createDocumentDraft(formData: FormData) {
   const file = formData.get("priloha") as File | null
   const keepPriloha = formData.get("keepPriloha") === "true"
 
-  if (!znacka) return { error: "Značka je povinná" }
+  if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
 
@@ -576,7 +616,7 @@ export async function createDocumentVersion(formData: FormData) {
   const file = formData.get("priloha") as File | null
   const keepPriloha = formData.get("keepPriloha") === "true"
 
-  if (!znacka) return { error: "Značka je povinná" }
+  if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
 
@@ -902,7 +942,7 @@ export async function createDocumentAttachment(formData: FormData) {
     textContent = (await extractDocText(storedName)) ?? undefined
   }
 
-  await prisma.documentAttachment.create({
+  const newAtt = await prisma.documentAttachment.create({
     data: {
       documentId,
       znacka,
@@ -914,6 +954,17 @@ export async function createDocumentAttachment(formData: FormData) {
       textContent,
     },
   })
+
+  const accessUserIdsRaw = formData.get("accessUserIds") as string | null
+  if (accessUserIdsRaw && confidentiality === "DOVERNI") {
+    const accessUserIds: number[] = JSON.parse(accessUserIdsRaw)
+    if (accessUserIds.length > 0) {
+      await prisma.documentAttachmentAccess.createMany({
+        data: accessUserIds.map((uid) => ({ userId: uid, attachmentId: newAtt.id, grantedById: userId })),
+        skipDuplicates: true,
+      })
+    }
+  }
 
   await createAuditLog({
     userId, userEmail: session.user.email, userName: session.user.name,

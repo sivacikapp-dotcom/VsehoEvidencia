@@ -39,6 +39,7 @@ export default async function DokumentyPage() {
         agendas={agendas.map((a) => ({
         id: a.id,
         name: a.name,
+        skratka: a.skratka ?? null,
         documentCount: a.documents.length,
         gestors: a.gestors.map((g) => ({
           id: g.user.id,

@@ -9,7 +9,7 @@ import {
   Plus, Trash2, History, GitBranch, AlertTriangle, MessageSquare, Send, ChevronDown, ChevronUp,
 } from "lucide-react"
 import {
-  updateDocument, grantDocumentAccess, revokeDocumentAccess, setDocumentGestor,
+  updateDocument, deleteDocument, grantDocumentAccess, revokeDocumentAccess, setDocumentGestor,
   createDocumentAttachment, updateDocumentAttachment, deleteDocumentAttachment,
   grantAttachmentAccess, revokeAttachmentAccess,
   createDocumentDraft, approveDocumentDraft,
@@ -66,6 +66,8 @@ interface DocumentData {
   prilohaName: string | null
   agendaId: number
   agendaName: string
+  agendaSkratka: string | null
+  parentId: number | null
   version: number
   isLatest: boolean
   status: string
@@ -81,6 +83,7 @@ interface Props {
   latestDocId: number
   nextDocVersionZnacka: string
   canEdit: boolean
+  canDelete: boolean
   canManageAccess: boolean
   canManageGestors: boolean
   isAdmin: boolean
@@ -94,6 +97,7 @@ interface Props {
   canManageNotes: boolean
   canSeeAuxFiles: boolean
   nextZnacka: string
+  attachmentOnlyMode?: boolean
 }
 
 const confidentialityLabels: Record<Confidentiality, string> = {
@@ -124,11 +128,12 @@ interface AttachmentModalProps {
   defaultZnacka: string
   defaultConfidentiality: Confidentiality
   existing?: AttachmentData
+  allUsers?: { id: number; name: string; email: string }[]
   onClose: () => void
   onDone: () => void
 }
 
-function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiality, existing, onClose, onDone }: AttachmentModalProps) {
+function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiality, existing, allUsers = [], onClose, onDone }: AttachmentModalProps) {
   const today = new Date().toISOString().split("T")[0]
   const [znacka, setZnacka] = useState(existing?.znacka ?? defaultZnacka)
   const [nazov, setNazov] = useState(existing?.nazov ?? "")
@@ -138,6 +143,7 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
   const [confidentiality, setConfidentiality] = useState<Confidentiality>(
     existing?.confidentiality ?? defaultConfidentiality
   )
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<number>>(new Set())
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const fileRef = useRef<HTMLInputElement>(null)
@@ -157,6 +163,9 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
     let res
     if (mode === "create") {
       fd.set("documentId", String(documentId))
+      if (confidentiality === "DOVERNI" && selectedUserIds.size > 0) {
+        fd.set("accessUserIds", JSON.stringify([...selectedUserIds]))
+      }
       res = await createDocumentAttachment(fd)
     } else if (mode === "edit") {
       fd.set("attachmentId", String(existing!.id))
@@ -209,6 +218,37 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
               <option value="DOVERNI">Dôverný</option>
             </select>
           </div>
+          {mode === "create" && confidentiality === "DOVERNI" && allUsers.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Prístupy k prílohe
+                {selectedUserIds.size > 0 && (
+                  <span className="ml-1.5 text-purple-600 dark:text-purple-400">({selectedUserIds.size})</span>
+                )}
+              </label>
+              <div className="border border-gray-200 dark:border-gray-700 rounded-lg divide-y divide-gray-100 dark:divide-gray-700/50 max-h-44 overflow-y-auto">
+                {allUsers.map((u) => (
+                  <label key={u.id} className="flex items-center gap-3 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedUserIds.has(u.id)}
+                      onChange={(e) => {
+                        const next = new Set(selectedUserIds)
+                        if (e.target.checked) next.add(u.id)
+                        else next.delete(u.id)
+                        setSelectedUserIds(next)
+                      }}
+                      className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-900 dark:text-gray-100 truncate">{u.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{u.email}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor</label>
             {(mode === "create" || (!hasExistingFile || removeFile)) ? (
@@ -301,8 +341,8 @@ function NewDocDraftModal({ doc, nextZnacka, nextVersion, onClose, onCreated }: 
         </div>
         <div className="px-6 py-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Značka <span className="text-red-500">*</span></label>
-            <input value={znacka} onChange={(e) => setZnacka(e.target.value)} className={inputCls} />
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Poradové číslo <span className="text-red-500">*</span></label>
+            <input value={znacka} onChange={(e) => setZnacka(e.target.value)} placeholder="napr. 1-2024" className={inputCls} />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov <span className="text-red-500">*</span></label>
@@ -364,6 +404,7 @@ export default function DocumentDetailClient({
   latestDocId,
   nextDocVersionZnacka,
   canEdit,
+  canDelete,
   canManageAccess,
   canManageGestors,
   isAppAdmin = false,
@@ -376,6 +417,7 @@ export default function DocumentDetailClient({
   canManageNotes,
   canSeeAuxFiles,
   nextZnacka,
+  attachmentOnlyMode = false,
 }: Props) {
   const router = useRouter()
 
@@ -384,6 +426,7 @@ export default function DocumentDetailClient({
   const [form, setForm] = useState({
     znacka: doc.znacka, nazov: doc.nazov,
     datumSchvalenia: doc.datumSchvalenia, confidentiality: doc.confidentiality,
+    gestorId: (doc.gestors[0]?.id ?? null) as number | null,
   })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -404,10 +447,13 @@ export default function DocumentDetailClient({
   const [attachAccessPending, setAttachAccessPending] = useState<number | null>(null)
   const [expandedAttachHistory, setExpandedAttachHistory] = useState<number | null>(null) // rootId
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false)
+  const [attachmentsOpen, setAttachmentsOpen] = useState(attachmentOnlyMode)
+  const [accessOpen, setAccessOpen] = useState(false)
 
   // New document draft modal
   const [showNewDocDraft, setShowNewDocDraft] = useState(false)
   const [approvingDoc, setApprovingDoc] = useState(false)
+  const [deletingDoc, setDeletingDoc] = useState(false)
 
   // Notes state — initialNotes comes directly from server props (router.refresh() updates them)
   const [newNoteText, setNewNoteText] = useState("")
@@ -429,6 +475,7 @@ export default function DocumentDetailClient({
 
   const currentGestor = doc.gestors[0] ?? null
   const accessIds = new Set(doc.accesses.map((a) => a.id))
+  const cisloDokumentu = doc.agendaSkratka ? `SKNIC-${doc.agendaSkratka}-${doc.znacka}-${doc.version}` : null
 
   // Group attachments by family (parentId ?? id = rootId)
   const attByRoot = new Map<number, AttachmentData[]>()
@@ -451,6 +498,7 @@ export default function DocumentDetailClient({
     const res = await updateDocument(fd)
     setPending(false)
     if (res?.error) { setError(res.error); return }
+    if (canManageGestors) await setDocumentGestor(doc.id, form.gestorId)
     setEditing(false); router.refresh()
   }
 
@@ -474,6 +522,18 @@ export default function DocumentDetailClient({
     setApprovingDoc(false)
     router.push(`/dashboard/dokumenty/${doc.agendaId}/${doc.id}`)
     router.refresh()
+  }
+
+  async function handleDeleteDoc() {
+    const msg = doc.parentId === null
+      ? `Naozaj chcete zmazať dokument „${doc.nazov}"? Budú vymazané všetky verzie dokumentu.`
+      : `Naozaj chcete zmazať dokument „${doc.nazov}"? Bude vymazaná len táto verzia.`
+    if (!confirm(msg)) return
+    setDeletingDoc(true)
+    const res = await deleteDocument(doc.id)
+    setDeletingDoc(false)
+    if (res?.error) { setError(res.error); return }
+    router.push(`/dashboard/dokumenty/${doc.agendaId}`)
   }
 
   async function handleApproveAttachment(attachmentId: number) {
@@ -590,12 +650,33 @@ export default function DocumentDetailClient({
         </div>
       )}
 
+      {/* Attachment-only access banner */}
+      {attachmentOnlyMode && (
+        <div className="flex items-center gap-2 px-4 py-2.5 mb-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg text-sm text-blue-700 dark:text-blue-300">
+          <Paperclip size={15} className="shrink-0" />
+          Nemáte prístup k tomuto dokumentu, ale máte prístup k niektorým jeho prílohám — súbor dokumentu je skrytý.
+        </div>
+      )}
+
       {/* Historical version banner */}
-      {!doc.isLatest && (
+      {!doc.isLatest && doc.status !== "DRAFT" && (
         <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl">
           <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
           <div className="text-sm text-amber-800 dark:text-amber-300">
             Toto je <strong>archivovaná verzia v{doc.version}</strong>.{" "}
+            <Link href={`/dashboard/dokumenty/${doc.agendaId}/${latestDocId}`} className="underline hover:no-underline">
+              Prejsť na aktuálnu verziu →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* Draft banner */}
+      {doc.status === "DRAFT" && (
+        <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl">
+          <AlertTriangle size={16} className="text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+          <div className="text-sm text-orange-800 dark:text-orange-300">
+            Toto je <strong>neschválený návrh verzie v{doc.version}</strong> — nie je verejne viditeľný.{" "}
             <Link href={`/dashboard/dokumenty/${doc.agendaId}/${latestDocId}`} className="underline hover:no-underline">
               Prejsť na aktuálnu verziu →
             </Link>
@@ -609,7 +690,7 @@ export default function DocumentDetailClient({
           <div>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
-                {doc.znacka}
+                {cisloDokumentu ?? doc.znacka}
               </span>
               {doc.status === "DRAFT" ? (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
@@ -677,14 +758,24 @@ export default function DocumentDetailClient({
                 <Pencil size={14} /> Editovať
               </button>
             )}
+            {canDelete && !editing && (
+              <button
+                onClick={handleDeleteDoc}
+                disabled={deletingDoc}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-600 dark:text-red-400 border border-red-200 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-60"
+              >
+                {deletingDoc ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Zmazať
+              </button>
+            )}
           </div>
         </div>
 
         {editing ? (
           <div className="px-6 py-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Značka <span className="text-red-500">*</span></label>
-              <input value={form.znacka} onChange={(e) => setForm((f) => ({ ...f, znacka: e.target.value }))} className={inputCls} />
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Poradové číslo <span className="text-red-500">*</span></label>
+              <input value={form.znacka} onChange={(e) => setForm((f) => ({ ...f, znacka: e.target.value }))} placeholder="napr. 1-2024" className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov <span className="text-red-500">*</span></label>
@@ -702,6 +793,15 @@ export default function DocumentDetailClient({
                 <option value="DOVERNI">Dôverný</option>
               </select>
             </div>
+            {canManageGestors && (
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Gestor dokumentu</label>
+                <select value={form.gestorId ?? ""} onChange={(e) => setForm((f) => ({ ...f, gestorId: e.target.value ? parseInt(e.target.value) : null }))} className={inputCls}>
+                  <option value="">— Žiadny gestor —</option>
+                  {gestorUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor</label>
               {doc.prilohaName && !removePriloha ? (
@@ -737,6 +837,9 @@ export default function DocumentDetailClient({
           </div>
         ) : (
           <dl className="px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5">
+            <Field label="Poradové číslo">
+              <span className="text-sm font-mono text-gray-900 dark:text-gray-100">{doc.znacka}</span>
+            </Field>
             <Field label="Dátum schválenia">
               <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>
             </Field>
@@ -761,6 +864,10 @@ export default function DocumentDetailClient({
                   className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline">
                   <Download size={14} />{doc.prilohaName}
                 </a>
+              ) : attachmentOnlyMode ? (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
+                  <Lock size={11} /> Prístup obmedzený
+                </span>
               ) : (
                 <span className="text-sm text-gray-400 dark:text-gray-500">Žiadny súbor</span>
               )}
@@ -881,23 +988,26 @@ export default function DocumentDetailClient({
 
       {/* Prílohy */}
       <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-        <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Paperclip size={15} className="text-gray-500" />
+        <div className={`px-5 py-4 ${attachmentsOpen ? "border-b border-gray-200 dark:border-gray-700" : ""} flex items-center gap-2`}>
+          <button type="button" onClick={() => setAttachmentsOpen((o) => !o)} className="flex items-center gap-2 flex-1 min-w-0 text-left hover:opacity-80 transition-opacity">
+            <Paperclip size={15} className="text-gray-500 shrink-0" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Prílohy</h2>
             <span className="text-xs text-gray-400 dark:text-gray-500">({latestAttachments.length})</span>
-          </div>
+            <span className="ml-2 text-gray-400 dark:text-gray-500">
+              {attachmentsOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </span>
+          </button>
           {canEdit && doc.isLatest && (
             <button
               onClick={() => setAttachModal({ mode: "create" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-medium transition-colors shrink-0"
             >
               <Plus size={13} /> Pridať prílohu
             </button>
           )}
         </div>
 
-        {latestAttachments.length === 0 ? (
+        {attachmentsOpen && (latestAttachments.length === 0 ? (
           <div className="px-5 py-6 text-center text-sm text-gray-400 dark:text-gray-500">Žiadne prílohy.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -911,6 +1021,7 @@ export default function DocumentDetailClient({
                   <th className="text-left px-5 py-2.5">Dôvernosť</th>
                   <th className="text-left px-5 py-2.5">Súbor</th>
                   <th className="px-5 py-2.5" />
+                  {canSeeAuxFiles && <th className="text-left px-5 py-2.5">Pom. súbory</th>}
                 </tr>
               </thead>
               <tbody>
@@ -923,7 +1034,7 @@ export default function DocumentDetailClient({
 
                   return (
                     <Fragment key={att.id}>
-                      <tr className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <tr className={`border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-800/50 ${!att.canDownload && att.confidentiality === "DOVERNI" ? "opacity-60 bg-red-50/20 dark:bg-red-900/5" : ""}`}>
                         <td className="px-5 py-3 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
@@ -945,7 +1056,9 @@ export default function DocumentDetailClient({
                             )}
                           </div>
                         </td>
-                        <td className="px-5 py-3 text-gray-900 dark:text-gray-100">{att.nazov}</td>
+                        <td className="px-5 py-3">
+                          <span className="text-gray-900 dark:text-gray-100">{att.nazov}</span>
+                        </td>
                         <td className="px-5 py-3 text-xs text-gray-600 dark:text-gray-400 tabular-nums">
                           {att.datumPrvehoSchvalenia ? fmtDate(att.datumPrvehoSchvalenia) : <span className="text-gray-400 dark:text-gray-500">—</span>}
                         </td>
@@ -957,6 +1070,16 @@ export default function DocumentDetailClient({
                             {att.confidentiality === "DOVERNI" && <Lock size={10} />}
                             {confidentialityLabels[att.confidentiality]}
                           </span>
+                          {att.accessUsers.length > 0 && (
+                            <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+                              <Users size={10} className="text-purple-400 shrink-0" />
+                              {att.accessUsers.map((u) => (
+                                <span key={u.id} className="text-[10px] text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20 px-1.5 py-0.5 rounded-full">
+                                  {u.name}
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </td>
                         <td className="px-5 py-3">
                           {att.filePath ? (
@@ -967,8 +1090,8 @@ export default function DocumentDetailClient({
                                 <Download size={13} /> {att.fileName}
                               </a>
                             ) : (
-                              <span className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                                <Lock size={11} /> Prístup obmedzený
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full">
+                                <Lock size={11} /> Nemáte prístup
                               </span>
                             )
                           ) : (
@@ -1021,6 +1144,48 @@ export default function DocumentDetailClient({
                             )}
                           </div>
                         </td>
+                        {canSeeAuxFiles && (
+                          <td className="px-5 py-3 align-top">
+                            <div className="flex flex-col gap-1">
+                              {att.auxFiles.map((f) => (
+                                <div key={f.id} className="flex items-center gap-1">
+                                  <a href={`/api/dokumenty/file/${f.storedName}?name=${encodeURIComponent(f.originalName)}`}
+                                    target="_blank" rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline truncate max-w-[180px]">
+                                    <Download size={11} className="shrink-0" />{f.originalName}
+                                  </a>
+                                  {canEdit && (
+                                    <button onClick={() => handleDeleteAttAuxFile(f.id)} disabled={deletingAttAuxFileId === f.id}
+                                      className="p-0.5 text-gray-300 hover:text-red-500 rounded transition-colors shrink-0" title="Zmazať">
+                                      {deletingAttAuxFileId === f.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              {canEdit && doc.isLatest && addingAttAuxFile === att.id ? (
+                                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                  <input
+                                    ref={(el) => { attAuxFileRefs.current.set(att.id, el) }}
+                                    type="file"
+                                    className="text-xs text-gray-700 dark:text-gray-300 file:mr-1 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-xs file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300 max-w-[160px]"
+                                  />
+                                  <button onClick={() => handleAddAttAuxFile(att.id)} disabled={savingAttAuxFile}
+                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-60 shrink-0">
+                                    {savingAttAuxFile ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Uložiť
+                                  </button>
+                                  <button onClick={() => setAddingAttAuxFile(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1 shrink-0">Zrušiť</button>
+                                </div>
+                              ) : canEdit && doc.isLatest ? (
+                                <button onClick={() => setAddingAttAuxFile(att.id)}
+                                  className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-blue-500 transition-colors">
+                                  <Plus size={11} /> Pridať
+                                </button>
+                              ) : att.auxFiles.length === 0 ? (
+                                <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
+                              ) : null}
+                            </div>
+                          </td>
+                        )}
                       </tr>
                       {/* Draft attachment rows — always visible to gestors */}
                       {family.filter((a) => a.status === "DRAFT").map((draft) => (
@@ -1064,6 +1229,7 @@ export default function DocumentDetailClient({
                               </div>
                             )}
                           </td>
+                          {canSeeAuxFiles && <td />}
                         </tr>
                       ))}
                       {/* Inline attachment version history */}
@@ -1101,89 +1267,29 @@ export default function DocumentDetailClient({
                               </button>
                             )}
                           </td>
+                          {canSeeAuxFiles && <td />}
                         </tr>
                       ))}
-                      {/* Auxiliary files for this attachment */}
-                      {canSeeAuxFiles && (att.auxFiles.length > 0 || (canEdit && doc.isLatest)) && (
-                        <tr className="border-b border-gray-100 dark:border-gray-700/30 bg-gray-50/30 dark:bg-gray-800/10">
-                          <td colSpan={7} className="pl-10 pr-5 py-2">
-                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                              <span className="text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide shrink-0">Pomocné súbory</span>
-                              {att.auxFiles.map((f) => (
-                                <div key={f.id} className="flex items-center gap-1">
-                                  <a href={`/api/dokumenty/file/${f.storedName}?name=${encodeURIComponent(f.originalName)}`}
-                                    target="_blank" rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline">
-                                    <Download size={11} />{f.originalName}
-                                  </a>
-                                  {canEdit && (
-                                    <button onClick={() => handleDeleteAttAuxFile(f.id)} disabled={deletingAttAuxFileId === f.id}
-                                      className="p-0.5 text-gray-300 hover:text-red-500 rounded transition-colors" title="Zmazať">
-                                      {deletingAttAuxFileId === f.id ? <Loader2 size={10} className="animate-spin" /> : <Trash2 size={10} />}
-                                    </button>
-                                  )}
-                                </div>
-                              ))}
-                              {canEdit && doc.isLatest && addingAttAuxFile === att.id ? (
-                                <div className="flex items-center gap-1">
-                                  <input
-                                    ref={(el) => { attAuxFileRefs.current.set(att.id, el) }}
-                                    type="file"
-                                    className="text-xs text-gray-700 dark:text-gray-300 file:mr-1 file:py-0.5 file:px-1.5 file:rounded file:border-0 file:text-xs file:bg-gray-100 dark:file:bg-gray-700 file:text-gray-700 dark:file:text-gray-300"
-                                  />
-                                  <button onClick={() => handleAddAttAuxFile(att.id)} disabled={savingAttAuxFile}
-                                    className="flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs disabled:opacity-60">
-                                    {savingAttAuxFile ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />} Uložiť
-                                  </button>
-                                  <button onClick={() => setAddingAttAuxFile(null)} className="text-xs text-gray-400 hover:text-gray-600 px-1">Zrušiť</button>
-                                </div>
-                              ) : canEdit && doc.isLatest ? (
-                                <button onClick={() => setAddingAttAuxFile(att.id)}
-                                  className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-blue-500 transition-colors">
-                                  <Plus size={11} /> Pridať
-                                </button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
                     </Fragment>
                   )
                 })}
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </div>
-
-      {/* Gestor dokumentu */}
-      {canManageGestors && doc.isLatest && !isAppAdmin && (
-        <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-            <Shield size={15} className="text-gray-500" />
-            <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Gestor dokumentu</h2>
-            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">— môže editovať tento dokument</span>
-          </div>
-          <div className="px-5 py-4 flex items-center gap-3">
-            <select value={currentGestor?.id ?? ""} onChange={(e) => handleGestor(e.target.value ? parseInt(e.target.value) : null)}
-              disabled={gestorPending}
-              className="flex-1 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60">
-              <option value="">— Žiadny gestor —</option>
-              {gestorUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-            </select>
-            {gestorPending && <Loader2 size={16} className="animate-spin text-gray-400 shrink-0" />}
-          </div>
-        </div>
-      )}
 
       {/* Prístupy používateľov */}
       {canManageAccess && doc.isLatest && (
         <div className="mt-5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl">
-          <div className="px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
-            <Users size={15} className="text-gray-500" />
+          <button type="button" onClick={() => setAccessOpen((o) => !o)} className={`w-full px-5 py-4 ${accessOpen ? "border-b border-gray-200 dark:border-gray-700" : ""} flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors rounded-xl`}>
+            <Users size={15} className="text-gray-500 shrink-0" />
             <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Prístupy používateľov</h2>
-          </div>
-          {doc.confidentiality !== "DOVERNI" ? (
+            <span className="ml-auto text-gray-400 dark:text-gray-500">
+              {accessOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </span>
+          </button>
+          {accessOpen && (doc.confidentiality !== "DOVERNI" ? (
             <div className="px-5 py-4 flex items-start gap-3">
               <div className={`mt-0.5 shrink-0 w-2 h-2 rounded-full ${doc.confidentiality === "VEREJNY" ? "bg-green-400" : "bg-blue-400"}`} />
               <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -1200,7 +1306,7 @@ export default function DocumentDetailClient({
           ) : (
             <>
               <ul className="divide-y divide-gray-100 dark:divide-gray-700/50">
-                {allUsers.map((u) => (
+                {[...allUsers].sort((a, b) => Number(b.hasAccess) - Number(a.hasAccess)).map((u) => (
                   <li key={u.id} className="flex items-center justify-between px-5 py-3">
                     <div>
                       <p className="text-sm text-gray-900 dark:text-gray-100">{u.name}</p>
@@ -1221,7 +1327,7 @@ export default function DocumentDetailClient({
               </ul>
               {allUsers.length === 0 && <p className="px-5 py-4 text-sm text-gray-500 dark:text-gray-400">Žiadni ďalší používatelia.</p>}
             </>
-          )}
+          ))}
         </div>
       )}
 
@@ -1353,6 +1459,7 @@ export default function DocumentDetailClient({
           defaultZnacka={nextZnacka}
           defaultConfidentiality={doc.confidentiality}
           existing={"attachment" in attachModal ? attachModal.attachment : undefined}
+          allUsers={allUsersForAttachment}
           onClose={() => setAttachModal(null)}
           onDone={() => { setAttachModal(null); router.refresh() }}
         />

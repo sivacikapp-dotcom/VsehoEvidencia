@@ -25,11 +25,14 @@ interface Document {
   version: number
   canEdit: boolean
   canDelete: boolean
+  canAccess: boolean
+  attachmentOnlyAccess?: boolean
   gestors: { id: number; name: string }[]
 }
 
 interface Props {
   agenda: { id: number; name: string }
+  agendaSkratka: string | null
   documents: Document[]
   canCreate: boolean
   isAdmin: boolean
@@ -37,6 +40,7 @@ interface Props {
   allUsers: { id: number; name: string; email: string }[]
   agendaGestors: { id: number; name: string }[]
   agendaGestorIds: Set<number>
+  gestorUsers: { id: number; name: string }[]
 }
 
 const confidentialityLabels: Record<Confidentiality, string> = {
@@ -119,6 +123,7 @@ interface DocForm {
   nazov: string
   datumSchvalenia: string
   confidentiality: Confidentiality
+  gestorId: number | null
 }
 
 const emptyForm: DocForm = {
@@ -126,10 +131,12 @@ const emptyForm: DocForm = {
   nazov: "",
   datumSchvalenia: "",
   confidentiality: "INTERNI",
+  gestorId: null,
 }
 
 export default function DocumentsClient({
   agenda,
+  agendaSkratka,
   documents,
   canCreate,
   isAdmin,
@@ -137,6 +144,7 @@ export default function DocumentsClient({
   allUsers,
   agendaGestors,
   agendaGestorIds,
+  gestorUsers,
 }: Props) {
   const router = useRouter()
   const [modal, setModal] = useState<"new" | "edit" | null>(null)
@@ -244,6 +252,7 @@ export default function DocumentsClient({
       nazov: doc.nazov,
       datumSchvalenia: doc.datumSchvalenia,
       confidentiality: doc.confidentiality,
+      gestorId: null,
     })
     setEditDoc(doc)
     setFileName(null)
@@ -261,6 +270,7 @@ export default function DocumentsClient({
     fd.set("datumSchvalenia", form.datumSchvalenia)
     fd.set("confidentiality", form.confidentiality)
     if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
+    if (modal === "new" && form.gestorId) fd.set("gestorId", String(form.gestorId))
     if (modal === "edit" && editDoc) {
       fd.set("documentId", String(editDoc.id))
       fd.set("removePriloha", removePriloha ? "true" : "false")
@@ -400,7 +410,7 @@ export default function DocumentsClient({
             {sortKey && (
               <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
                 {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
-                <span>{{ znacka: "Značka", nazov: "Názov", datumSchvalenia: "Dátum schválenia", confidentiality: "Dôvernosť" }[sortKey]}</span>
+                <span>{{ znacka: "Poradové číslo", nazov: "Názov", datumSchvalenia: "Dátum schválenia", confidentiality: "Dôvernosť" }[sortKey]}</span>
                 <button type="button" onClick={() => setSortKey(null)} className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100">
                   <X size={11} />
                 </button>
@@ -415,11 +425,11 @@ export default function DocumentsClient({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                  <Th label="Značka" colKey="znacka" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  <Th label="Poradové číslo" colKey="znacka" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <Th label="Názov" colKey="nazov" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <Th label="Dátum schválenia" colKey="datumSchvalenia" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <Th label="Dôvernosť" colKey="confidentiality" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  <th className={thBase}>Gestor</th>
+                  <th className={thBase}>Gestor dokumentu</th>
                   <th className={thBase}>Súbor</th>
                   <th className="px-4 py-3" />
                 </tr>
@@ -435,23 +445,30 @@ export default function DocumentsClient({
                   sorted.map((doc) => (
                     <tr
                       key={doc.id}
-                      onClick={() => router.push(`/dashboard/dokumenty/${agenda.id}/${doc.id}`)}
-                      className="hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors group cursor-pointer"
+                      onClick={doc.canAccess ? () => router.push(`/dashboard/dokumenty/${agenda.id}/${doc.id}`) : undefined}
+                      className={`transition-colors group ${doc.canAccess ? "hover:bg-gray-50 dark:hover:bg-gray-800/30 cursor-pointer" : "opacity-60 bg-red-50/30 dark:bg-red-900/5"}`}
                     >
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs font-medium text-blue-600 dark:text-blue-400">
-                            {doc.znacka}
-                          </span>
-                          {doc.version > 1 && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                              v{doc.version}
+                        <div className="flex flex-col gap-0.5">
+                          {agendaSkratka && doc.canAccess && (
+                            <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
+                              SKNIC-{agendaSkratka}-{doc.znacka}-{doc.version}
                             </span>
                           )}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`font-mono text-xs font-medium ${doc.canAccess ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}>
+                              {doc.znacka}
+                            </span>
+                            {doc.version > 1 && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                v{doc.version}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-gray-900 dark:text-gray-100">{doc.nazov}</span>
+                        <span className={doc.canAccess ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}>{doc.nazov}</span>
                       </td>
                       <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
                         {fmtDate(doc.datumSchvalenia)}
@@ -465,13 +482,13 @@ export default function DocumentsClient({
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        {doc.gestors[0]
+                        {doc.canAccess && doc.gestors[0]
                           ? <span className="text-xs text-gray-700 dark:text-gray-300">{doc.gestors[0].name}</span>
                           : <span className="text-xs text-gray-300 dark:text-gray-600">—</span>
                         }
                       </td>
                       <td className="px-4 py-3">
-                        {doc.prilohaName ? (
+                        {doc.canAccess && doc.prilohaName ? (
                           <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                             <Paperclip size={12} />
                             <span className="truncate max-w-[120px]">{doc.prilohaName}</span>
@@ -481,30 +498,43 @@ export default function DocumentsClient({
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-1">
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {doc.canEdit && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openEdit(doc) }}
-                                className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
-                                title="Editovať"
-                              >
-                                <Pencil size={14} />
-                              </button>
+                        {doc.canAccess ? (
+                          <div className="flex items-center justify-end gap-1">
+                            {doc.attachmentOnlyAccess && (
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-500 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                                <Paperclip size={11} /> Príloha
+                              </span>
                             )}
-                            {doc.canDelete && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleDelete(doc.id, doc.nazov) }}
-                                disabled={deleting === doc.id}
-                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-                                title="Zmazať"
-                              >
-                                {deleting === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                              </button>
-                            )}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {doc.canEdit && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); openEdit(doc) }}
+                                  className="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                                  title="Editovať"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              )}
+                              {doc.canDelete && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(doc.id, doc.nazov) }}
+                                  disabled={deleting === doc.id}
+                                  className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                                  title="Zmazať"
+                                >
+                                  {deleting === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                                </button>
+                              )}
+                            </div>
+                            <ChevronRight size={15} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors shrink-0" />
                           </div>
-                          <ChevronRight size={15} className="text-gray-400 group-hover:text-gray-600 dark:group-hover:text-gray-300 transition-colors shrink-0" />
-                        </div>
+                        ) : (
+                          <div className="flex items-center justify-end">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium text-red-500 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              <Lock size={11} /> Nemáte prístup
+                            </span>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -573,14 +603,19 @@ export default function DocumentsClient({
             <div className="px-6 py-5 space-y-4">
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Značka <span className="text-red-500">*</span>
+                  Poradové číslo <span className="text-red-500">*</span>
                 </label>
                 <input
                   value={form.znacka}
                   onChange={(e) => setForm((f) => ({ ...f, znacka: e.target.value }))}
-                  placeholder="napr. SM-001"
+                  placeholder="napr. 1-2024"
                   className={inputCls}
                 />
+                {agendaSkratka && form.znacka && (
+                  <p className="mt-1 text-[10px] text-gray-400 font-mono">
+                    Číslo dokumentu: SKNIC-{agendaSkratka}-{form.znacka}-1
+                  </p>
+                )}
               </div>
 
               <div>
@@ -621,6 +656,24 @@ export default function DocumentsClient({
                   <option value="DOVERNI">Dôverný</option>
                 </select>
               </div>
+
+              {modal === "new" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Gestor dokumentu
+                  </label>
+                  <select
+                    value={form.gestorId ?? ""}
+                    onChange={(e) => setForm((f) => ({ ...f, gestorId: e.target.value ? parseInt(e.target.value) : null }))}
+                    className={selectCls}
+                  >
+                    <option value="">— Žiadny gestor —</option>
+                    {gestorUsers.map((u) => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">

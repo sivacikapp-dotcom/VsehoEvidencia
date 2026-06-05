@@ -369,6 +369,7 @@ model AssetAttachment {
 model Agenda {
   id        Int            @id @default(autoincrement())
   name      String         @unique
+  skratka   String?        @unique
   createdAt DateTime       @default(now())
   documents Document[]
   gestors   AgendaGestor[]

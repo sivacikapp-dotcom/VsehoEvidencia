@@ -54,11 +54,12 @@ export default async function DocumentDetailPage({
       },
     }),
     prisma.user.findMany({
+      where: { isAdminAccount: false },
       select: { id: true, firstName: true, lastName: true, email: true },
       orderBy: { lastName: "asc" },
     }),
     prisma.user.findMany({
-      where: { roles: { has: "GESTOR_DOKUMENTU" } },
+      where: { isAdminAccount: false, roles: { has: "GESTOR_DOKUMENTU" } },
       select: { id: true, firstName: true, lastName: true, email: true },
       orderBy: { lastName: "asc" },
     }),
@@ -82,10 +83,19 @@ export default async function DocumentDetailPage({
 
   if (doc.confidentiality === "DOVERNI" && !isAppAdmin) {
     const canAccess = isAdmin || isAgendaGestor || isDocGestor || hasExplicitAccess
-    if (!canAccess) redirect(`/dashboard/dokumenty/${agendaId}`)
+    const hasAnyDownloadableAttachment = doc.attachments.some(a =>
+      a.confidentiality !== "DOVERNI" ||
+      (userDoc?.attachmentAccesses.some(aa => aa.attachmentId === a.id) ?? false)
+    )
+    if (!canAccess && !hasAnyDownloadableAttachment) redirect(`/dashboard/dokumenty/${agendaId}`)
   }
 
+  const attachmentOnlyMode = !isAppAdmin && doc.confidentiality === "DOVERNI" &&
+    !isAdmin && !isAgendaGestor && !isDocGestor && !hasExplicitAccess &&
+    doc.attachments.some(a => a.confidentiality !== "DOVERNI" || myAttachmentAccessIds.has(a.id))
+
   const canEdit = !isAppAdmin && (isAdmin || isAgendaGestor || isDocGestor)
+  const canDelete = !isAppAdmin && (isAdmin || isAgendaGestor)
   const canManageAccess = !isAppAdmin && (isAdmin || isAgendaGestor || isDocGestor)
   const canManageGestors = !isAppAdmin && (isAdmin || isAgendaGestor)
 
@@ -112,7 +122,6 @@ export default async function DocumentDetailPage({
   const nextZnacka = `${doc.znacka}-P${nextAttachmentN}`
 
   const baseZnacka = doc.znacka.replace(/_v\d+$/, "")
-  const nextDocVersion = doc.version + 1
 
   const otherUsers = allUsers
     .map((u) => ({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email }))
@@ -134,11 +143,13 @@ export default async function DocumentDetailPage({
           datumSchvalenia: isAppAdmin ? HIDDEN : doc.datumSchvalenia.toISOString().split("T")[0],
           datumPrvehoSchvalenia: isAppAdmin ? null : (doc.datumPrvehoSchvalenia?.toISOString().split("T")[0] ?? null),
           confidentiality: isAppAdmin ? "VEREJNY" : doc.confidentiality,
-          prilohaPath: isAppAdmin ? null : doc.prilohaPath,
-          prilohaName: isAppAdmin ? null : doc.prilohaName,
+          prilohaPath: (isAppAdmin || attachmentOnlyMode) ? null : doc.prilohaPath,
+          prilohaName: (isAppAdmin || attachmentOnlyMode) ? null : doc.prilohaName,
           auxFiles: canSeeAuxFiles ? doc.auxFiles.map((f) => ({ id: f.id, storedName: f.storedName, originalName: f.originalName })) : [],
           agendaId: doc.agendaId,
           agendaName: doc.agenda.name,
+          agendaSkratka: isAppAdmin ? null : (doc.agenda.skratka ?? null),
+          parentId: doc.parentId,
           version: doc.version,
           isLatest: doc.isLatest,
           status: doc.status,
@@ -186,9 +197,10 @@ export default async function DocumentDetailPage({
           status: v.status,
         }))}
         latestDocId={latestDocId}
-        nextDocVersionZnacka={`${baseZnacka}_v${nextDocVersion}`}
+        nextDocVersionZnacka={baseZnacka}
         nextZnacka={nextZnacka}
         canEdit={canEdit}
+        canDelete={canDelete}
         canManageAccess={canManageAccess}
         canManageGestors={canManageGestors}
         isAdmin={!isAppAdmin && isAdmin}
@@ -207,6 +219,7 @@ export default async function DocumentDetailPage({
         })) : []}
         canManageNotes={canManageNotes}
         canSeeAuxFiles={canSeeAuxFiles}
+        attachmentOnlyMode={attachmentOnlyMode}
       />
     </div>
   )

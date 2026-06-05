@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   FolderOpen, Plus, Trash2, X, Loader2, Users, ChevronRight,
-  Search, FileText, Paperclip, Building2, File,
+  Search, FileText, Paperclip, Building2, File, Pencil, Check,
 } from "lucide-react"
-import { createAgenda, deleteAgenda, searchDocuments, type DocSearchResult } from "./actions"
+import { createAgenda, deleteAgenda, updateAgendaSkratka, searchDocuments, type DocSearchResult } from "./actions"
 
 interface Agenda {
   id: number
   name: string
+  skratka: string | null
   documentCount: number
   gestors: { id: number; name: string }[]
   isMyAgenda: boolean
@@ -40,9 +41,16 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false }: 
   // New agenda
   const [showNew, setShowNew] = useState(false)
   const [newName, setNewName] = useState("")
+  const [newSkratka, setNewSkratka] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const [deleting, setDeleting] = useState<number | null>(null)
+
+  // Edit skratka
+  const [editingSkratkaId, setEditingSkratkaId] = useState<number | null>(null)
+  const [editingSkratkaVal, setEditingSkratkaVal] = useState("")
+  const [savingSkratka, setSavingSkratka] = useState(false)
+  const [skratkaError, setSkratkaError] = useState("")
 
   // Search
   const [searchQuery, setSearchQuery] = useState("")
@@ -81,11 +89,27 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false }: 
   async function handleCreate() {
     if (!newName.trim()) { setError("Zadajte názov agendy"); return }
     setPending(true); setError("")
-    const fd = new FormData(); fd.set("name", newName.trim())
+    const fd = new FormData()
+    fd.set("name", newName.trim())
+    if (newSkratka.trim()) fd.set("skratka", newSkratka.trim())
     const res = await createAgenda(fd)
     setPending(false)
     if (res?.error) { setError(res.error); return }
-    setNewName(""); setShowNew(false); router.refresh()
+    setNewName(""); setNewSkratka(""); setShowNew(false); router.refresh()
+  }
+
+  function startEditSkratka(agenda: Agenda) {
+    setEditingSkratkaId(agenda.id)
+    setEditingSkratkaVal(agenda.skratka ?? "")
+    setSkratkaError("")
+  }
+
+  async function saveSkratka(agendaId: number) {
+    setSavingSkratka(true); setSkratkaError("")
+    const res = await updateAgendaSkratka(agendaId, editingSkratkaVal)
+    setSavingSkratka(false)
+    if (res?.error) { setSkratkaError(res.error); return }
+    setEditingSkratkaId(null); router.refresh()
   }
 
   async function handleDelete(id: number, name: string) {
@@ -198,12 +222,13 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false }: 
                         {agenda.documentCount === 1 ? "dokument" : agenda.documentCount < 5 ? "dokumenty" : "dokumentov"}
                       </p>
                     </div>
-                    <div className="flex-1 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 min-w-0">
-                      <Users size={13} className="shrink-0" />
-                      <span className="truncate">
+                    <div className="flex-1 flex items-center gap-1.5 text-xs min-w-0" title="Gestori agendy">
+                      <Users size={13} className="shrink-0 text-gray-400 dark:text-gray-500" />
+                      <span className="shrink-0 text-gray-400 dark:text-gray-500 font-medium">Gestor:</span>
+                      <span className="truncate text-gray-600 dark:text-gray-300">
                         {agenda.gestors.length > 0
                           ? agenda.gestors.map((g) => g.name).join(", ")
-                          : <span className="italic">Žiadny gestor</span>
+                          : <span className="italic text-gray-400 dark:text-gray-500">Žiadny</span>
                         }
                       </span>
                     </div>
@@ -216,7 +241,43 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false }: 
                   </Link>
 
                   {isAdmin && (
-                    <div className="pr-3 shrink-0">
+                    <div className="pr-3 shrink-0 flex items-center gap-1">
+                      {/* Skratka edit */}
+                      {editingSkratkaId === agenda.id ? (
+                        <div className="flex items-center gap-1" onClick={(e) => e.preventDefault()}>
+                          <input
+                            value={editingSkratkaVal}
+                            onChange={(e) => setEditingSkratkaVal(e.target.value.toUpperCase().slice(0, 3))}
+                            onKeyDown={(e) => { if (e.key === "Enter") saveSkratka(agenda.id); if (e.key === "Escape") setEditingSkratkaId(null) }}
+                            placeholder="ABC"
+                            className="w-14 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded px-2 py-1 text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          {skratkaError && <span className="text-[10px] text-red-500">{skratkaError}</span>}
+                          <button
+                            onClick={(e) => { e.preventDefault(); saveSkratka(agenda.id) }}
+                            disabled={savingSkratka}
+                            className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded"
+                          >
+                            {savingSkratka ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                          </button>
+                          <button onClick={(e) => { e.preventDefault(); setEditingSkratkaId(null) }} className="p-1 text-gray-400 hover:text-gray-600 rounded">
+                            <X size={13} />
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.preventDefault(); startEditSkratka(agenda) }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-xs font-mono opacity-0 group-hover:opacity-100 transition-opacity hover:bg-gray-100 dark:hover:bg-gray-700"
+                          title="Upraviť skratku agendy"
+                        >
+                          {agenda.skratka
+                            ? <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{agenda.skratka}</span>
+                            : <span className="text-gray-400">skratka</span>
+                          }
+                          <Pencil size={11} className="text-gray-400" />
+                        </button>
+                      )}
                       <button
                         onClick={(e) => { e.preventDefault(); handleDelete(agenda.id, agenda.name) }}
                         disabled={deleting === agenda.id}
@@ -256,6 +317,16 @@ export default function AgendasClient({ agendas, isAdmin, isAppAdmin = false }: 
               placeholder="napr. Bezpečnostné smernice"
               className={inputCls}
               autoFocus
+            />
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 mt-3">
+              Skratka agendy (2–3 písmená, napr. BZ alebo BZP)
+            </label>
+            <input
+              value={newSkratka}
+              onChange={(e) => setNewSkratka(e.target.value.toUpperCase().slice(0, 3))}
+              placeholder="napr. BZP"
+              className={inputCls + " font-mono uppercase"}
+              maxLength={3}
             />
             {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
 
