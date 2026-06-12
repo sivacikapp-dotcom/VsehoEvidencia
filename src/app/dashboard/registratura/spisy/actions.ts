@@ -9,7 +9,7 @@ import { nextSpisNumber, currentYear } from "@/lib/regCounter"
 
 type Result = { error?: string; success?: boolean; id?: number }
 
-function canManageSpis(roles: string[], spis: { spracovatelId: number }, userId: number) {
+function canManageSpis(roles: string[], spis: { spracovatelId: number | null }, userId: number) {
   if (roles.includes("SPRAVCA_REGISTRATURY") || roles.includes("SPRAVCA_APLIKACIE")) return true
   return roles.includes("SPRACOVATEL_REGISTRATURY") && spis.spracovatelId === userId
 }
