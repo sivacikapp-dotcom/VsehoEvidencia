@@ -83,7 +83,7 @@ type ExpenseReport = {
     mimeType: string
     size: number
     createdAt: string
-    uploadedBy: { firstName: string; lastName: string }
+    uploadedBy: { firstName: string; lastName: string } | null
   }[]
 }
 

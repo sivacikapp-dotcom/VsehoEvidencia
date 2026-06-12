@@ -108,7 +108,7 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
             mimeType: a.mimeType,
             size: a.size,
             createdAt: a.createdAt.toISOString(),
-            uploadedBy: a.uploadedBy,
+            uploadedBy: a.uploadedBy ?? null,
           })),
         }
       : null,
