@@ -371,21 +371,6 @@ export async function deleteUser(userId: number): Promise<Result> {
     errors.push(`Pracovné cesty: používateľ má ${travelOrderCount} ${travelOrderCount === 1 ? "cestovný príkaz" : "cestovných príkazov"} — pred zmazaním ich vyriešte alebo preveďte.`)
   }
 
-  // Podateľňa — záznamy pošty vytvorené týmto používateľom
-  if (postaCount > 0) {
-    errors.push(`Registratúra: používateľ vytvoril ${postaCount} ${postaCount === 1 ? "záznam pošty" : "záznamy pošty"} — pred zmazaním ich preveďte na iného pracovníka.`)
-  }
-
-  // Registratúrne záznamy
-  if (zaznamCount > 0) {
-    errors.push(`Registratúra: používateľ je spracovateľom alebo autorom ${zaznamCount} ${zaznamCount === 1 ? "záznamu" : "záznamov"} — pred zmazaním ich preveďte.`)
-  }
-
-  // Spisy
-  if (spisCount > 0) {
-    errors.push(`Registratúra: používateľ je spracovateľom alebo autorom ${spisCount} ${spisCount === 1 ? "spisu" : "spisov"} — pred zmazaním ich preveďte.`)
-  }
-
   if (errors.length > 0) {
     return { errors, error: errors.join("\n") }
   }
@@ -424,8 +409,7 @@ export async function deleteUser(userId: number): Promise<Result> {
     return { success: true }
   } catch (err) {
     console.error("[deleteUser]", err)
-    const msg = err instanceof Error ? err.message : String(err)
-    return { error: `Nastala chyba pri mazaní: ${msg}` }
+    return { error: "Nastala chyba pri mazaní." }
   }
 }
 

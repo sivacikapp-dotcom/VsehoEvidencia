@@ -360,8 +360,8 @@ model AssetAttachment {
   size         Int
   visibility   AttachmentVisibility
   uploaderRoles Role[]
-  uploadedById Int
-  uploadedBy   User                 @relation(fields: [uploadedById], references: [id])
+  uploadedById Int?
+  uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   uploaderName String
   createdAt    DateTime             @default(now())
 }
@@ -555,8 +555,8 @@ model ExpenseReportAttachment {
   originalName    String
   mimeType        String
   size            Int
-  uploadedById    Int
-  uploadedBy      User                @relation(fields: [uploadedById], references: [id])
+  uploadedById    Int?
+  uploadedBy      User?               @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   createdAt       DateTime            @default(now())
 }
 
@@ -781,8 +781,8 @@ model Posta {
   status                     PostaStatus    @default(ZAREGISTROVANA)
   attachments                PostaAttachment[]
   zaznam                     RegZaznam?     @relation("PostaZaznam")
-  createdById                Int
-  createdBy                  User           @relation("PostaCreatedBy", fields: [createdById], references: [id])
+  createdById                Int?
+  createdBy                  User?          @relation("PostaCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt                  DateTime       @default(now())
   updatedAt                  DateTime       @updatedAt
 
@@ -811,8 +811,8 @@ model RegZaznam {
   posta         Posta?            @relation("PostaZaznam", fields: [postaId], references: [id])
   planId        Int?
   plan          RegistraturnyPlan? @relation(fields: [planId], references: [id])
-  spracovatelId Int
-  spracovatel   User              @relation("ZaznamSpracovatel", fields: [spracovatelId], references: [id])
+  spracovatelId Int?
+  spracovatel   User?             @relation("ZaznamSpracovatel", fields: [spracovatelId], references: [id], onDelete: SetNull)
   utvarId       Int?
   utvar         Utvar?            @relation(fields: [utvarId], references: [id])
   formaZaznamu  RegZaznamType     @default(ELEKTRONICKY)
@@ -825,8 +825,8 @@ model RegZaznam {
   adresati      ZaznamAdresat[]
   prilohy       ZaznamPriloha[]
   spisy         SpisZaznam[]
-  createdById   Int
-  createdBy     User              @relation("ZaznamCreatedBy", fields: [createdById], references: [id])
+  createdById   Int?
+  createdBy     User?             @relation("ZaznamCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
@@ -891,15 +891,15 @@ model Spis {
   utvar            Utvar?            @relation(fields: [utvarId], references: [id])
   planId           Int
   plan             RegistraturnyPlan @relation(fields: [planId], references: [id])
-  spracovatelId    Int
-  spracovatel      User              @relation("SpisSpracovatel", fields: [spracovatelId], references: [id])
+  spracovatelId    Int?
+  spracovatel      User?             @relation("SpisSpracovatel", fields: [spracovatelId], references: [id], onDelete: SetNull)
   datumOtvorenia   DateTime          @default(now())
   datumUzatvorenia DateTime?
   rokVyradenia     Int?
   status           String            @default("StSpis1")
   zaznamy          SpisZaznam[]
-  createdById      Int
-  createdBy        User              @relation("SpisCreatedBy", fields: [createdById], references: [id])
+  createdById      Int?
+  createdBy        User?             @relation("SpisCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
