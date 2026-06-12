@@ -562,6 +562,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                           step={0.01}
                           value={item.amount}
                           onChange={(e) => updatePubTransItem(item.id, "amount", e.target.value)}
+                          onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) updatePubTransItem(item.id, "amount", "0") }}
                           disabled={readOnly}
                           placeholder="0.00"
                           className="w-28 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
@@ -821,6 +822,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                           type="number" min={0} step={0.01}
                           value={item.price}
                           onChange={(e) => updateAccommodationItem(item.id, "price", e.target.value)}
+                          onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) updateAccommodationItem(item.id, "price", "0") }}
                           disabled={readOnly}
                           placeholder="0.00"
                           className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 text-right"
@@ -829,6 +831,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                           type="number" min={0} step={0.01}
                           value={item.companyCard}
                           onChange={(e) => updateAccommodationItem(item.id, "companyCard", e.target.value)}
+                          onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) updateAccommodationItem(item.id, "companyCard", "0") }}
                           disabled={readOnly}
                           placeholder="0.00"
                           className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 text-right"
@@ -837,6 +840,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                           type="number" min={0} step={0.01}
                           value={item.employee}
                           onChange={(e) => updateAccommodationItem(item.id, "employee", e.target.value)}
+                          onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) updateAccommodationItem(item.id, "employee", "0") }}
                           disabled={readOnly}
                           placeholder="0.00"
                           className="w-full px-2 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-60 text-right"
@@ -918,6 +922,7 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
                     step={0.01}
                     value={item.amount}
                     onChange={(e) => updateOtherItem(item.id, "amount", e.target.value)}
+                    onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) updateOtherItem(item.id, "amount", "0") }}
                     disabled={readOnly}
                     placeholder="0.00"
                     className="w-28 px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
@@ -1077,7 +1082,9 @@ function MoneyInput({ label, value, onChange, step = 0.01, disabled, hint }: {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</label>
-      <input type="number" min={0} step={step} value={value} onChange={(e) => onChange(e.target.value)}
+      <input type="number" min={0} step={step} value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={(e) => { if (e.target.value !== "" && parseFloat(e.target.value) < 0) onChange("0") }}
         disabled={disabled} placeholder="0.00"
         className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60" />
       {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}

@@ -1,7 +1,7 @@
 import "dotenv/config"
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import bcrypt from "bcryptjs"
+import { hashPassword } from "@/lib/password"
 
 const adapter = new PrismaPg({
   connectionString: process.env.DATABASE_DIRECT_URL!,
@@ -9,7 +9,15 @@ const adapter = new PrismaPg({
 const prisma = new PrismaClient({ adapter })
 
 async function main() {
-  const hash = await bcrypt.hash("heslo123", 12)
+  const seedPassword = process.env.SEED_ADMIN_PASSWORD
+  if (!seedPassword || seedPassword.length < 10) {
+    throw new Error(
+      "Set SEED_ADMIN_PASSWORD in .env (min 10 chars) before running seed. " +
+      "See .env.example."
+    )
+  }
+
+  const hash = await hashPassword(seedPassword)
 
   const user = await prisma.user.upsert({
     where: { username: "admin" },
@@ -25,15 +33,12 @@ async function main() {
   })
 
   console.log("Testovací používateľ vytvorený:", user.username)
-  console.log("Heslo: heslo123")
 
-  // Seed admin as document admin (via roles)
   await prisma.user.update({
     where: { username: "admin" },
     data: { roles: { push: "SPRAVCA_DOKUMENTOV" } },
   })
 
-  // Seed initial agendas
   const agendaNames = [
     "Všeobecné smernice",
     "Bezpečnostné smernice",

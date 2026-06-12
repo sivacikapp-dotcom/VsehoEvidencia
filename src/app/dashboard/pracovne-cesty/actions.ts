@@ -24,7 +24,7 @@ import {
 async function getSession(opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
-  const user = session.user as { id: string; name: string; roles: string[] }
+  const user = session.user
   if (opts.mutation && user.roles.includes("SPRAVCA_APLIKACIE")
     && !user.roles.includes("NADRIADENY")
     && !user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) {
@@ -90,6 +90,8 @@ async function dismissPendingNotification(
   })
 }
 
+// Order number format: TUZ-2025-001 / ZAH-2025-001.
+// Count-based; gaps are possible if a draft is deleted, but numbers never repeat.
 async function generateOrderNumber(type: TravelOrderType): Promise<string> {
   const prefix = type === "TUZEMSKY" ? "TUZ" : "ZAH"
   const year = new Date().getFullYear()
@@ -367,12 +369,14 @@ export async function managerApproveTravelOrder(id: number) {
     },
   })
 
+  await dismissPendingNotification(uid(user), id, "TRAVEL_ORDER_FOR_MANAGER")
   await notifyTravelOrderApproved(id, order.orderNumber, order.user.id)
   await createAuditLog({
     userId: uid(user), userEmail: null, userName: user.name,
     action: "UPDATE", entityType: "TRAVEL_ORDER", entityId: id, entityLabel: order.orderNumber,
     oldData: { status: "PENDING_MANAGER" }, newData: { status: "APPROVED" },
   })
+  revalidatePath("/dashboard")
   revalidatePath("/dashboard/pracovne-cesty")
   revalidatePath(`/dashboard/pracovne-cesty/${id}`)
 }

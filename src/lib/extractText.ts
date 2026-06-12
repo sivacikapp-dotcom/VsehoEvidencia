@@ -1,3 +1,8 @@
+/**
+ * Extracts plain text from uploaded documents for full-text search indexing.
+ * Supports plain-text files and PDFs; all other types return null (not indexed).
+ * Text is capped at MAX_CHARS to keep database rows manageable.
+ */
 import { readFile } from "fs/promises"
 import path from "path"
 import { PDFParse } from "pdf-parse"

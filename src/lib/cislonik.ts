@@ -1,3 +1,9 @@
+/**
+ * Codebook (číselník) helpers for the registry module.
+ * Values are stored in the database so admins can add/rename entries without a deploy.
+ * If the table is empty for a given type the defaults below are inserted automatically
+ * on first read (lazy seed), so the app works out of the box on a fresh database.
+ */
 import { prisma } from "./prisma"
 
 export type CislonikTyp =

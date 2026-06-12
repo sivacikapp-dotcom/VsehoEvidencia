@@ -597,7 +597,6 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
               </>
             )}
 
-
             {/* reject box */}
             {showRejectBox && (
               <div className="space-y-2 pt-1">
@@ -954,7 +953,7 @@ function ExpenseReportView({
   fmtEUR: (n: number | null) => string
   rejectedSnapshot?: string | null
 }) {
-  const storedMeals = er.mealsPerDay ? JSON.parse(er.mealsPerDay) : []
+  const storedMeals = er.mealsPerDay ? (() => { try { return JSON.parse(er.mealsPerDay!) } catch { return [] } })() : []
   const dayInfos: DayInfo[] = buildDayInfos(er.actualDepartureAt, er.actualReturnAt, storedMeals)
   const hours = (new Date(er.actualReturnAt).getTime() - new Date(er.actualDepartureAt).getTime()) / 3_600_000
   const balance = er.totalExpenses - er.advanceReceived

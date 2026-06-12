@@ -110,6 +110,13 @@ export async function acceptNotification(notificationId: number): Promise<Result
   }
 }
 
+/**
+ * Acknowledges one or more mustAcknowledge notifications.
+ * After the recipient confirms, the asset's allocationStatus is moved from
+ * the transitional "V_procese" state to its final value based on open assignments.
+ * For room assignments, all other room-users' pending confirmations are auto-closed
+ * since only one confirmation is needed.
+ */
 export async function acknowledgeNotifications(notificationIds: number[]): Promise<Result> {
   const session = await getServerSession(authOptions)
   if (!session) return { error: "Nie ste prihlásený." }

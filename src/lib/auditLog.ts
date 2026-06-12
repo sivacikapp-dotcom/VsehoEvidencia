@@ -1,3 +1,10 @@
+/**
+ * Centralized audit-log writer.
+ * All mutations in the app call createAuditLog() so that every data change
+ * is recorded with who made it, what changed, and when.
+ * For UPDATE actions the function automatically diffs old vs. new data and
+ * stores only the changed fields, keeping log entries concise.
+ */
 import { prisma } from "./prisma"
 
 export type AuditAction =
@@ -29,6 +36,7 @@ export async function createAuditLog(params: AuditLogParams): Promise<void> {
     let oldData = params.oldData ?? null
     let newData = params.newData ?? null
 
+    // For UPDATE logs: keep only the fields that actually changed.
     if (params.action === "UPDATE" && params.oldData && params.newData) {
       const diffOld: Record<string, unknown> = {}
       const diffNew: Record<string, unknown> = {}

@@ -1,5 +1,10 @@
 "use client"
 
+/**
+ * Persists per-user table preferences (column order, hidden columns, column widths)
+ * in localStorage. Each table gets a unique storageKey so preferences are isolated.
+ * Fixed columns cannot be hidden or reordered.
+ */
 import { useState, useEffect, useCallback } from "react"
 
 export type ColDef = {

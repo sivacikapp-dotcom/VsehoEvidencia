@@ -22,8 +22,7 @@ export type CreateRateConfigInput = {
 export async function createRateConfig(data: CreateRateConfigInput) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
-  const user = session.user as { id: string; roles: string[] }
-  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
+  if (!session.user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
 
   if (!data.validFrom) throw new Error("Dátum platnosti je povinný.")
   if (new Date(data.validFrom) > new Date()) throw new Error("Dátum platnosti nesmie byť v budúcnosti.")
@@ -37,6 +36,7 @@ export async function createRateConfig(data: CreateRateConfigInput) {
   if (data.kmJednostopove <= 0 || data.kmOsobneDoLimit <= 0 || data.kmOsobneNadLimit <= 0)
     throw new Error("Kilometrové sadzby musia byť kladné čísla.")
 
+  const userId = parseInt(session.user.id)
   const created = await prisma.travelRateConfig.create({
     data: {
       validFrom: new Date(data.validFrom),
@@ -50,11 +50,11 @@ export async function createRateConfig(data: CreateRateConfigInput) {
       kmOsobneDoLimit: data.kmOsobneDoLimit,
       kmOsobneNadLimit: data.kmOsobneNadLimit,
       kmEngineLimit: data.kmEngineLimit,
-      createdById: parseInt(user.id),
+      createdById: userId,
     },
   })
   await createAuditLog({
-    userId: parseInt(user.id), userEmail: null, userName: session.user.name,
+    userId, userEmail: null, userName: session.user.name,
     action: "CREATE", entityType: "RATE_CONFIG", entityId: created.id,
     entityLabel: data.validFrom,
     newData: { validFrom: data.validFrom, diet5to12: data.diet5to12, diet12to18: data.diet12to18, dietOver18: data.dietOver18 },
@@ -65,12 +65,12 @@ export async function createRateConfig(data: CreateRateConfigInput) {
 export async function deleteRateConfig(id: number) {
   const session = await getServerSession(authOptions)
   if (!session?.user) throw new Error("Nie ste prihlásený.")
-  const user = session.user as { id: string; roles: string[] }
-  if (!user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
+  if (!session.user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST")) throw new Error("Nemáte oprávnenie.")
+  const userId = parseInt(session.user.id)
   const config = await prisma.travelRateConfig.findUnique({ where: { id }, select: { validFrom: true } })
   await prisma.travelRateConfig.delete({ where: { id } })
   await createAuditLog({
-    userId: parseInt(user.id), userEmail: null, userName: session.user.name,
+    userId, userEmail: null, userName: session.user.name,
     action: "DELETE", entityType: "RATE_CONFIG", entityId: id,
     entityLabel: config?.validFrom?.toISOString().split("T")[0] ?? null,
     oldData: config ? { validFrom: config.validFrom } : null,

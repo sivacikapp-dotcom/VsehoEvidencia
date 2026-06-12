@@ -26,17 +26,6 @@ export const DEFAULT_TRAVEL_RATES: TravelRates = {
   kmEngineLimit: 1500,
 }
 
-// Backward-compatible exports
-// Sadzby diét (§5 zák. 283/2002 Z.z.) platné od 1.9.2023
-export const DIET_RATES = { tier1: DEFAULT_TRAVEL_RATES.diet5to12, tier2: DEFAULT_TRAVEL_RATES.diet12to18, tier3: DEFAULT_TRAVEL_RATES.dietOver18 } as const
-
-// Sadzby náhrady za km (§7 zák. 283/2002 Z.z.) platné od 1.9.2023
-export const KM_RATES = {
-  jednostopove: DEFAULT_TRAVEL_RATES.kmJednostopove,   // jednostopové vozidlo (motocykel)
-  osobne_do1500: DEFAULT_TRAVEL_RATES.kmOsobneDoLimit,  // osobné vozidlo do 1500 cm³
-  osobne_nad1500: DEFAULT_TRAVEL_RATES.kmOsobneNadLimit, // osobné vozidlo nad 1500 cm³
-} as const
-
 export function computeKmRate(
   vehicleCategory: "OSOBNE_VOZIDLO" | "JEDNOSTOPOVE" | null | undefined,
   engineVolume: number | null | undefined,
@@ -132,6 +121,12 @@ function getDatesInRange(startStr: string, endStr: string): string[] {
   return dates
 }
 
+/**
+ * Builds a per-day diet breakdown for the trip.
+ * For each calendar day between departure and return, calculates how many hours
+ * the traveller was on the road that day, then applies meal deductions to get
+ * the net diet allowance (§ 5 zák. 283/2002 Z.z.).
+ */
 export function buildDayInfos(
   depStr: string,
   retStr: string,

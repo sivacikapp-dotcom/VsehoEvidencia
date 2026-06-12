@@ -1,3 +1,8 @@
+/**
+ * Prisma client singleton.
+ * In development the client is cached on globalThis to survive hot-reloads
+ * without exhausting the PostgreSQL connection pool.
+ */
 import { PrismaClient } from "@/generated/prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 

@@ -25,8 +25,7 @@ export async function createUtvar(
   vedouciId: number | null
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  const err = requireAdmin(callerRoles)
+  const err = requireAdmin(session?.user?.roles ?? [])
   if (!session || err) return { error: err ?? "Prístup zamietnutý." }
 
   const name = nazov.trim()
@@ -68,8 +67,7 @@ export async function updateUtvar(
   vedouciId: number | null
 ): Promise<Result> {
   const session = await getServerSession(authOptions)
-  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  const err = requireAdmin(callerRoles)
+  const err = requireAdmin(session?.user?.roles ?? [])
   if (!session || err) return { error: err ?? "Prístup zamietnutý." }
 
   const name = nazov.trim()
@@ -120,8 +118,7 @@ export async function updateUtvar(
 
 export async function deleteUtvar(id: number): Promise<Result> {
   const session = await getServerSession(authOptions)
-  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  const err = requireAdmin(callerRoles)
+  const err = requireAdmin(session?.user?.roles ?? [])
   if (!session || err) return { error: err ?? "Prístup zamietnutý." }
 
   const utvar = await prisma.utvar.findUnique({

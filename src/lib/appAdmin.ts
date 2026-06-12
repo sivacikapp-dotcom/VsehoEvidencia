@@ -1,3 +1,9 @@
+/**
+ * Data-masking utilities for the read-only app-admin role.
+ * When a SPRAVCA_APLIKACIE views records that belong to other users, sensitive
+ * field values are replaced with the HIDDEN sentinel so the admin can see the
+ * record structure without accessing personal data.
+ */
 export const HIDDEN = "••••••"
 
 /** Replace a string value with the hidden sentinel when masking is active. */

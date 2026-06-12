@@ -1,5 +1,13 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production"
+const isDev = !isProd
+
+// script-src: unsafe-eval is required by Next.js/React in dev; removed in production.
+const scriptSrc = isDev
+  ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+  : "script-src 'self' 'unsafe-inline'"
+
 const securityHeaders = [
   { key: "X-DNS-Prefetch-Control", value: "on" },
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
@@ -10,7 +18,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'", // unsafe-eval kvôli Next.js dev; v produkcii zvážiť sprísnenie
+      scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self'",
@@ -20,9 +28,12 @@ const securityHeaders = [
       "base-uri 'self'",
     ].join("; "),
   },
+  // HSTS: only in production (requires HTTPS). 2-year max-age per OWASP recommendation.
+  ...(isProd ? [{
+    key: "Strict-Transport-Security",
+    value: "max-age=63072000; includeSubDomains; preload",
+  }] : []),
 ];
-
-const isDev = process.env.NODE_ENV === "development"
 
 const nextConfig: NextConfig = {
   experimental: {

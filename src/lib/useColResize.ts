@@ -2,6 +2,8 @@
 
 import { useCallback, useRef } from "react"
 
+// Drag-to-resize for table columns. Attach onResizeMouseDown to the resize handle
+// element on the column header; widths are stored via the setWidth callback.
 export function useColResize(
   getWidth: (key: string) => number | undefined,
   setWidth: (key: string, w: number) => void,

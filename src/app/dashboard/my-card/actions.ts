@@ -3,7 +3,7 @@
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import bcrypt from "bcryptjs"
+import { hashPassword, verifyPassword } from "@/lib/password"
 import { createAuditLog } from "@/lib/auditLog"
 
 type Result = { error?: string; success?: boolean }
@@ -18,10 +18,8 @@ export async function changePassword(
   if (!session?.user) return { error: "Nie ste prihlásený." }
 
   const userId = parseInt(session.user.id)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const actorUsername = (session.user as any).username ?? null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const isAdminAccount = (session.user as any).isAdminAccount ?? false
+  const actorUsername = session.user.username ?? null
+  const isAdminAccount = session.user.isAdminAccount ?? false
 
   if (!oldPassword) return { error: "Zadajte aktuálne heslo." }
   if (!newPassword) return { error: "Zadajte nové heslo." }
@@ -35,13 +33,13 @@ export async function changePassword(
   })
   if (!user) return { error: "Používateľ neexistuje." }
 
-  const valid = await bcrypt.compare(oldPassword, user.password)
+  const valid = await verifyPassword(oldPassword, user.password)
   if (!valid) return { error: "Aktuálne heslo nie je správne." }
 
   if (oldPassword === newPassword)
     return { error: "Nové heslo musí byť odlišné od aktuálneho." }
 
-  const hash = await bcrypt.hash(newPassword, 12)
+  const hash = await hashPassword(newPassword)
   await prisma.user.update({ where: { id: userId }, data: { password: hash } })
 
   await createAuditLog({

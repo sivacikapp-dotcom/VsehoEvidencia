@@ -18,7 +18,7 @@ export async function GET(
   if (!session?.user) return new NextResponse("Unauthorized", { status: 401 })
 
   const userId = parseInt(session.user.id)
-  const roles = (session.user as { roles?: string[] }).roles ?? []
+  const roles = session.user.roles ?? []
 
   // Nájdi attachment + súvisiaci cestovný príkaz
   const attachment = await prisma.expenseReportAttachment.findFirst({

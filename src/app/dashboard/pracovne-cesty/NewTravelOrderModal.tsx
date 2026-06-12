@@ -69,23 +69,39 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
   })
 
   const [error, setError] = useState("")
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [pending, startTransition] = useTransition()
   const [pendingMode, setPendingMode] = useState<"save" | "saveAndSend" | null>(null)
 
   function set(field: keyof InitialValues, value: string | boolean) {
     setForm((prev) => ({ ...prev, [field]: value }))
+    setFieldErrors((prev) => { const n = { ...prev }; delete n[field as string]; return n })
   }
 
+  const errCls = (f: string) =>
+    fieldErrors[f]
+      ? "border-red-500 dark:border-red-500 focus:ring-red-500"
+      : "border-gray-200 dark:border-gray-700 focus:ring-blue-500"
+
   function validate(): boolean {
-    if (!form.purpose.trim()) { setError("Zadajte účel pracovnej cesty."); return false }
-    if (!form.startLocation.trim()) { setError("Zadajte miesto odchodu."); return false }
-    if (!form.destination.trim()) { setError("Zadajte cieľ cesty."); return false }
-    if (!form.departureAt) { setError("Zadajte dátum odchodu."); return false }
-    if (!form.returnAt) { setError("Zadajte dátum návratu."); return false }
-    if (new Date(form.returnAt) < new Date(form.departureAt)) {
-      setError("Dátum návratu nesmie byť pred dátumom odchodu."); return false
+    const errs: Record<string, string> = {}
+    if (!form.purpose.trim()) errs.purpose = "Zadajte účel pracovnej cesty."
+    if (!form.startLocation.trim()) errs.startLocation = "Zadajte miesto odchodu."
+    if (!form.destination.trim()) errs.destination = "Zadajte cieľ cesty."
+    if (!form.departureAt) errs.departureAt = "Zadajte dátum odchodu."
+    if (!form.returnAt) errs.returnAt = "Zadajte dátum návratu."
+    if (form.departureAt && form.returnAt && new Date(form.returnAt) < new Date(form.departureAt)) {
+      errs.returnAt = "Dátum návratu nesmie byť pred dátumom odchodu."
     }
-    if (form.transport.length === 0) { setError("Vyberte aspoň jeden dopravný prostriedok."); return false }
+    if (form.transport.length === 0) errs.transport = "Vyberte aspoň jeden dopravný prostriedok."
+    if (ownVehicle && !form.vehicleCategory) errs.vehicleCategory = "Vyberte druh vozidla."
+    if (ownVehicle && form.vehicleCategory === "OSOBNE_VOZIDLO" && !form.engineVolume) {
+      errs.engineVolume = "Zadajte zdvihový objem motora."
+    }
+    setFieldErrors(errs)
+    const firstErr = Object.values(errs)[0]
+    if (firstErr) { setError(firstErr); return false }
+    setError("")
     return true
   }
 
@@ -174,8 +190,9 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                 value={form.purpose}
                 onChange={(e) => set("purpose", e.target.value)}
                 maxLength={300}
-                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${errCls("purpose")}`}
               />
+              {fieldErrors.purpose && <p className="mt-1 text-xs text-red-500">{fieldErrors.purpose}</p>}
             </div>
 
             <div className={`grid gap-4 ${isForeign ? "grid-cols-3" : "grid-cols-2"}`}>
@@ -187,8 +204,9 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   value={form.startLocation}
                   onChange={(e) => set("startLocation", e.target.value)}
                   placeholder="Napr. Bratislava"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${errCls("startLocation")}`}
                 />
+                {fieldErrors.startLocation && <p className="mt-1 text-xs text-red-500">{fieldErrors.startLocation}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -198,8 +216,9 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   value={form.destination}
                   onChange={(e) => set("destination", e.target.value)}
                   placeholder="Napr. Košice"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${errCls("destination")}`}
                 />
+                {fieldErrors.destination && <p className="mt-1 text-xs text-red-500">{fieldErrors.destination}</p>}
               </div>
               {isForeign && (
                 <div>
@@ -225,8 +244,9 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   type="datetime-local"
                   value={form.departureAt}
                   onChange={(e) => set("departureAt", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${errCls("departureAt")}`}
                 />
+                {fieldErrors.departureAt && <p className="mt-1 text-xs text-red-500">{fieldErrors.departureAt}</p>}
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -236,9 +256,12 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   type="datetime-local"
                   value={form.returnAt}
                   onChange={(e) => set("returnAt", e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 ${errCls("returnAt")}`}
                 />
-                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Musí byť neskôr ako dátum odchodu.</p>
+                {fieldErrors.returnAt
+                  ? <p className="mt-1 text-xs text-red-500">{fieldErrors.returnAt}</p>
+                  : <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Musí byť neskôr ako dátum odchodu.</p>
+                }
               </div>
             </div>
           </section>
@@ -252,16 +275,18 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   <input
                     type="checkbox"
                     checked={form.transport.includes(t)}
-                    onChange={() => toggleTransport(t)}
+                    onChange={() => { toggleTransport(t); setFieldErrors(p => { const n = {...p}; delete n.transport; return n }) }}
                     className="w-4 h-4 rounded border-gray-300 accent-blue-600"
                   />
                   {transportMeansLabels[t]}
                 </label>
               ))}
             </div>
+            {fieldErrors.transport && <p className="text-xs text-red-500">{fieldErrors.transport}</p>}
 
             {ownVehicle && (
-              <div className="space-y-3">
+              <div className="space-y-3 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Údaje o vlastnom vozidle</p>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Druh vozidla <span className="text-red-500">*</span>
@@ -281,6 +306,7 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                       </label>
                     ))}
                   </div>
+                  {fieldErrors.vehicleCategory && <p className="mt-1 text-xs text-red-500">{fieldErrors.vehicleCategory}</p>}
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -294,17 +320,19 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Zdvihový objem motora (cm³){form.vehicleCategory === "OSOBNE_VOZIDLO" && " *"}
+                      Zdvihový objem motora (cm³){form.vehicleCategory === "OSOBNE_VOZIDLO" && <span className="text-red-500"> *</span>}
                     </label>
                     <input
                       type="number"
                       min={0}
                       value={form.engineVolume}
                       onChange={(e) => set("engineVolume", e.target.value)}
+                      onBlur={(e) => { if (e.target.value && parseFloat(e.target.value) < 0) set("engineVolume", "0") }}
                       placeholder="Napr. 1598"
                       disabled={form.vehicleCategory === "JEDNOSTOPOVE"}
-                      className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      className={`w-full px-3 py-2 text-sm border rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 disabled:opacity-50 ${errCls("engineVolume")}`}
                     />
+                    {fieldErrors.engineVolume && <p className="mt-1 text-xs text-red-500">{fieldErrors.engineVolume}</p>}
                   </div>
                 </div>
               </div>
@@ -325,6 +353,7 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   step={0.01}
                   value={form.advanceEUR}
                   onChange={(e) => set("advanceEUR", e.target.value)}
+                  onBlur={(e) => { if (e.target.value && parseFloat(e.target.value) < 0) set("advanceEUR", "0") }}
                   placeholder="0.00"
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
@@ -341,6 +370,7 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                       step={0.01}
                       value={form.advanceForeign}
                       onChange={(e) => set("advanceForeign", e.target.value)}
+                      onBlur={(e) => { if (e.target.value && parseFloat(e.target.value) < 0) set("advanceForeign", "0") }}
                       placeholder="0.00"
                       className="flex-1 min-w-0 px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none border-0"
                     />
@@ -365,6 +395,7 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                     step={0.01}
                     value={form.pocketMoney}
                     onChange={(e) => set("pocketMoney", e.target.value)}
+                    onBlur={(e) => { if (e.target.value && parseFloat(e.target.value) < 0) set("pocketMoney", "0") }}
                     placeholder="0.00"
                     className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -407,7 +438,10 @@ export default function NewTravelOrderModal({ type, supervisors, defaultSupervis
                   </option>
                 ))}
               </select>
-
+              {supervisors.length === 0
+                ? <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Žiadni používatelia s rolou Nadriadený neboli nájdení.</p>
+                : !form.supervisorId && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Voliteľné – ak nevyberiete, príkaz nebude mať nadriadeného na schválenie.</p>
+              }
             </div>
           </section>
 

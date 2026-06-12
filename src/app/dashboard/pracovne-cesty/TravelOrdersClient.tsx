@@ -13,6 +13,7 @@ import type { TravelOrderType, TravelOrderStatus } from "@/generated/prisma/enum
 import NewTravelOrderModal from "./NewTravelOrderModal"
 import { fmtDate } from "@/lib/formatDate"
 import { MultiSelect } from "@/components/MultiSelect"
+import Toast from "@/components/Toast"
 
 type Order = {
   id: number
@@ -80,6 +81,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
   const [showNewModal, setShowNewModal] = useState(false)
   const [newType, setNewType] = useState<TravelOrderType>("TUZEMSKY")
+  const [toast, setToast] = useState<string | null>(null)
   const [, startTransition] = useTransition()
 
   const isSpravcaPC = userRoles.includes("SPRAVCA_PRACOVNYCH_CIEST")
@@ -310,10 +312,12 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
           onClose={() => setShowNewModal(false)}
           onCreated={() => {
             setShowNewModal(false)
+            setToast("Cestovný príkaz bol úspešne vytvorený.")
             startTransition(() => router.refresh())
           }}
         />
       )}
+      {toast && <Toast message={toast} onDone={() => setToast(null)} />}
     </div>
   )
 }

@@ -1,5 +1,7 @@
+import { getServerSession } from "next-auth"
+import { redirect, notFound } from "next/navigation"
+import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import { notFound } from "next/navigation"
 import {
   assetTypeLabels,
   brandLabels,
@@ -17,6 +19,9 @@ export default async function OdovzdanieProtocolPage({
   params: Promise<{ id: string }>
   searchParams: Promise<{ ids?: string }>
 }) {
+  const session = await getServerSession(authOptions)
+  if (!session?.user) redirect("/login")
+
   const { id } = await params
   const { ids } = await searchParams
 

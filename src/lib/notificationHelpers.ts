@@ -1,3 +1,11 @@
+/**
+ * Notification helpers — thin wrappers over prisma.notification.create/createMany.
+ * Each function targets a specific business event and is called from the relevant
+ * server action after the primary mutation succeeds.
+ *
+ * mustAcknowledge = true  →  blocking modal that the recipient must confirm
+ * mustAcknowledge = false →  soft banner dismissible by the user
+ */
 import { prisma } from "./prisma"
 import { assetTypeLabels } from "./labels"
 import type { AssetType, Confidentiality } from "@/generated/prisma/enums"
@@ -187,31 +195,6 @@ export async function notifyTravelOrderSubmitted(
       travelOrderId,
       mustAcknowledge: false,
     },
-  })
-}
-
-export async function notifyTravelOrderForManager(
-  travelOrderId: number,
-  orderNumber: string,
-  ownerName: string,
-  excludeUserId?: number
-) {
-  const managers = await prisma.user.findMany({
-    where: { roles: { has: "SPRAVCA_PRACOVNYCH_CIEST" as const } },
-    select: { id: true },
-  })
-  const targets = managers.filter((m) => m.id !== excludeUserId)
-  if (targets.length === 0) return
-
-  await prisma.notification.createMany({
-    data: targets.map((m) => ({
-      userId: m.id,
-      type: "TRAVEL_ORDER_FOR_MANAGER" as const,
-      title: "Cestovný príkaz na finančné schválenie",
-      message: `Cestovný príkaz ${orderNumber} (${ownerName}) bol schválený nadriadeným a čaká na finančné schválenie.`,
-      travelOrderId,
-      mustAcknowledge: false,
-    })),
   })
 }
 

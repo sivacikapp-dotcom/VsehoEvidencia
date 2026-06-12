@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma"
 import { DEFAULT_TRAVEL_RATES, type TravelRates } from "./travelUtils"
 
+// Returns the most recently published rate config, or built-in defaults when none exists.
 export async function getCurrentTravelRates(): Promise<TravelRates> {
   const config = await prisma.travelRateConfig.findFirst({
     where: { validFrom: { lte: new Date() } },

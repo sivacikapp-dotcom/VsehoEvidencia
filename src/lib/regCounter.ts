@@ -4,6 +4,7 @@ export function currentYear(): number {
   return new Date().getFullYear()
 }
 
+// Serializable isolation prevents two concurrent requests from receiving the same number.
 export async function nextCounter(key: string, digits = 5): Promise<string> {
   const result = await prisma.$transaction(async (tx) => {
     const counter = await tx.regCounter.upsert({

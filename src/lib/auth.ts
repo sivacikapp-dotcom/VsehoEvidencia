@@ -1,8 +1,14 @@
+/**
+ * NextAuth configuration.
+ * Authentication uses username + bcrypt password (no OAuth).
+ * Brute-force protection: account locks for 2 hours after 5 failed attempts.
+ * Suspicious logins from unknown usernames are logged and admins are notified.
+ */
 import type { NextAuthOptions } from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import bcrypt from "bcryptjs"
 import { prisma } from "./prisma"
 import { createAuditLog } from "./auditLog"
+import { verifyPassword, hashPassword, needsRehash } from "./password"
 
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION_MS = 2 * 60 * 60 * 1000 // 2 hodiny
@@ -63,6 +69,22 @@ export const authOptions: NextAuthOptions = {
     maxAge: 2 * 60 * 60,   // 2 hodiny
     updateAge: 5 * 60,      // obnoviť token pri aktivite (každých 5 min)
   },
+  // Explicitly document cookie security attributes for compliance (vyhláška 227/2025 Z.z.).
+  // NextAuth sets these same defaults automatically in production, but explicit config
+  // prevents accidental regression if defaults ever change.
+  cookies: {
+    sessionToken: {
+      name: process.env.NODE_ENV === "production"
+        ? "__Secure-next-auth.session-token"
+        : "next-auth.session-token",
+      options: {
+        httpOnly: true,
+        sameSite: "lax" as const,
+        path: "/",
+        secure: process.env.NODE_ENV === "production",
+      },
+    },
+  },
   providers: [
     CredentialsProvider({
       name: "credentials",
@@ -121,7 +143,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         // ── Nesprávne heslo ───────────────────────────────────────────────
-        const valid = await bcrypt.compare(credentials.password, user.password)
+        const valid = await verifyPassword(credentials.password, user.password)
         if (!valid) {
           const newAttempts = user.loginAttempts + 1
 
@@ -164,11 +186,19 @@ export const authOptions: NextAuthOptions = {
           }
         }
 
-        // ── Úspešné prihlásenie — reset počítadla ─────────────────────────
-        if (user.loginAttempts > 0 || user.lockedUntil) {
+        // ── Úspešné prihlásenie — reset počítadla + lazy argon2id upgrade ──
+        const upgradeHash = needsRehash(user.password)
+        const updatePayload: Record<string, unknown> = { loginAttempts: 0, lockedUntil: null }
+        if (upgradeHash) {
+          // Transparently migrate legacy bcrypt hash to argon2id on next login
+          updatePayload.password = await hashPassword(credentials.password)
+        }
+        if (user.loginAttempts > 0 || user.lockedUntil || upgradeHash) {
           await prisma.user.update({
             where: { id: user.id },
-            data: { loginAttempts: 0, lockedUntil: null },
+            data: upgradeHash
+              ? updatePayload
+              : { loginAttempts: 0, lockedUntil: null },
           })
         }
 
@@ -187,25 +217,18 @@ export const authOptions: NextAuthOptions = {
     jwt({ token, user }) {
       if (user) {
         token.id = user.id
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.roles = (user as any).roles
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.username = (user as any).username
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        token.isAdminAccount = (user as any).isAdminAccount
+        token.roles = user.roles
+        token.username = user.username
+        token.isAdminAccount = user.isAdminAccount
       }
       return token
     },
     session({ session, token }) {
       if (session.user) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(session.user as any).id = token.id
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(session.user as any).roles = token.roles
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(session.user as any).username = token.username
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        ;(session.user as any).isAdminAccount = token.isAdminAccount
+        session.user.id = token.id
+        session.user.roles = token.roles
+        session.user.username = token.username
+        session.user.isAdminAccount = token.isAdminAccount
       }
       return session
     },
@@ -216,8 +239,7 @@ export const authOptions: NextAuthOptions = {
         userId: user.id ? parseInt(user.id) : null,
         userEmail: user.email ?? null,
         userName: user.name ?? null,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        actorUsername: (user as any).username ?? null,
+        actorUsername: user.username ?? null,
         action: "LOGIN_SUCCESS",
         entityType: "AUTH",
         entityId: user.id ?? user.email ?? "?",

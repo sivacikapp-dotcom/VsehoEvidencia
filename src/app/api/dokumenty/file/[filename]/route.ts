@@ -26,36 +26,34 @@ export async function GET(
   const parentDoc = doc ?? attachment?.document ?? null
   if (!parentDoc) return new NextResponse("Not found", { status: 404 })
 
+  const session = await getServerSession(authOptions)
+  if (!session) return new NextResponse("Unauthorized", { status: 401 })
+
   // Effective confidentiality: for attachments use their own level, for document files use document level
   const effectiveConfidentiality = attachment ? attachment.confidentiality : parentDoc.confidentiality
 
-  if (effectiveConfidentiality !== "VEREJNY") {
-    const session = await getServerSession(authOptions)
-    if (!session) return new NextResponse("Unauthorized", { status: 401 })
+  if (effectiveConfidentiality === "DOVERNI") {
+    const userId = parseInt(session.user.id)
+    const userDoc = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        roles: true,
+        agendaGestors: { select: { agendaId: true } },
+        documentGestors: { select: { documentId: true } },
+        attachmentAccesses: { select: { attachmentId: true } },
+      },
+    })
+    const isAdmin = userDoc?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+    const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === parentDoc.agendaId) ?? false
+    const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === parentDoc.id) ?? false
 
-    if (effectiveConfidentiality === "DOVERNI") {
-      const userId = parseInt(session.user.id)
-      const userDoc = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          roles: true,
-          agendaGestors: { select: { agendaId: true } },
-          documentGestors: { select: { documentId: true } },
-          attachmentAccesses: { select: { attachmentId: true } },
-        },
-      })
-      const isAdmin = userDoc?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
-      const isAgendaGestor = userDoc?.agendaGestors.some((g) => g.agendaId === parentDoc.agendaId) ?? false
-      const isDocGestor = userDoc?.documentGestors.some((g) => g.documentId === parentDoc.id) ?? false
+    // For attachment files: check attachment-level access; for document files: check document access
+    const hasAccess = attachment
+      ? (userDoc?.attachmentAccesses.some((a) => a.attachmentId === attachment.id) ?? false)
+      : await prisma.documentAccess.findFirst({ where: { userId, documentId: parentDoc.id } }).then(Boolean)
 
-      // For attachment files: check attachment-level access; for document files: check document access
-      const hasAccess = attachment
-        ? (userDoc?.attachmentAccesses.some((a) => a.attachmentId === attachment.id) ?? false)
-        : await prisma.documentAccess.findFirst({ where: { userId, documentId: parentDoc.id } }).then(Boolean)
-
-      if (!isAdmin && !isAgendaGestor && !isDocGestor && !hasAccess) {
-        return new NextResponse("Forbidden", { status: 403 })
-      }
+    if (!isAdmin && !isAgendaGestor && !isDocGestor && !hasAccess) {
+      return new NextResponse("Forbidden", { status: 403 })
     }
   }
 

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 import { readFile } from "fs/promises"
-import { join } from "path"
+import { join, resolve, sep } from "path"
 import { createHash } from "crypto"
 import { createAuditLog } from "@/lib/auditLog"
 
@@ -51,7 +51,9 @@ export async function GET(
   if (!canAccess(roles, priloha.zaznam, userId)) return new NextResponse("Forbidden", { status: 403 })
 
   const ext = priloha.storedName.split(".").pop()?.toLowerCase() ?? ""
-  const filePath = join(process.cwd(), "uploads", "registratura", priloha.storedName)
+  const uploadsDir = resolve(process.cwd(), "uploads", "registratura")
+  const filePath = resolve(uploadsDir, priloha.storedName)
+  if (!filePath.startsWith(uploadsDir + sep)) return new NextResponse("Forbidden", { status: 403 })
 
   try {
     const buffer = await readFile(filePath)

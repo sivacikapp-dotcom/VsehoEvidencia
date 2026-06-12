@@ -69,9 +69,6 @@ export const sposobVybavieniaLabels: Record<string, string> = {
   StVyZa4: "Odoslaný",
 }
 
-// Backward compat aliases
-export const sposobVybaveniaPrijatyLabels = sposobVybavieniaLabels
-export const sposobVybavieniaVytvorenyLabels = sposobVybavieniaLabels
 
 export const zaznamDovernostLabels: Record<ZaznamDovernost, string> = {
   VEREJNE: "Verejné",

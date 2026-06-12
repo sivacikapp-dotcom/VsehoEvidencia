@@ -27,7 +27,7 @@ const MAX_SIZE = 50 * 1024 * 1024
 export async function createZaznam(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
   if (!session) return { error: "Nie ste prihlásený." }
-  const roles = session.user.roles as string[]
+  const roles = session.user.roles
   if (!roles.includes("SPRACOVATEL_REGISTRATURY") && !roles.includes("SPRAVCA_REGISTRATURY")) {
     return { error: "Nemáte oprávnenie." }
   }

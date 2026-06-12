@@ -14,7 +14,7 @@ function isAdmin(roles: string[]) {
 
 export async function createPlanEntry(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session || !isAdmin(session.user.roles as string[])) return { error: "Nemáte oprávnenie." }
+  if (!session || !isAdmin(session.user.roles)) return { error: "Nemáte oprávnenie." }
 
   const znacka = (formData.get("znacka") as string)?.trim().toUpperCase()
   const nazov = (formData.get("nazov") as string)?.trim()
@@ -46,7 +46,7 @@ export async function createPlanEntry(formData: FormData): Promise<Result> {
 
 export async function updatePlanEntry(planId: number, formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session || !isAdmin(session.user.roles as string[])) return { error: "Nemáte oprávnenie." }
+  if (!session || !isAdmin(session.user.roles)) return { error: "Nemáte oprávnenie." }
 
   const znacka = (formData.get("znacka") as string)?.trim().toUpperCase()
   const nazov = (formData.get("nazov") as string)?.trim()
@@ -83,7 +83,7 @@ export async function updatePlanEntry(planId: number, formData: FormData): Promi
 
 export async function deletePlanEntry(planId: number): Promise<Result> {
   const session = await getServerSession(authOptions)
-  if (!session || !isAdmin(session.user.roles as string[])) return { error: "Nemáte oprávnenie." }
+  if (!session || !isAdmin(session.user.roles)) return { error: "Nemáte oprávnenie." }
 
   const entry = await prisma.registraturnyPlan.findUnique({
     where: { id: planId },

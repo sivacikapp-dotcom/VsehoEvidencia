@@ -14,6 +14,7 @@ export default async function DashboardPage() {
   const [
     totalAssets, assignedAssets, freeAssets, totalUsers,
     totalAgendas, totalDocuments,
+    myTravelOrders, pendingMyApproval,
     dismissibleRaw,
   ] = await Promise.all([
     prisma.asset.count(),
@@ -24,6 +25,10 @@ export default async function DashboardPage() {
     prisma.user.count(),
     prisma.agenda.count(),
     prisma.document.count({ where: { isLatest: true } }),
+    prisma.travelOrder.count({ where: { userId } }),
+    prisma.travelOrder.count({
+      where: { supervisorId: userId, status: "PENDING_SUPERVISOR" },
+    }),
     prisma.notification.findMany({
       where: { userId, mustAcknowledge: false, dismissedAt: null },
       include: {
@@ -145,14 +150,24 @@ export default async function DashboardPage() {
             Pracovné cesty
           </h2>
         </div>
-        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex items-center gap-4">
-          <div className="p-2 rounded-lg bg-teal-50 dark:bg-teal-900/40">
-            <Clock size={18} className="text-teal-600 dark:text-teal-400" />
-          </div>
-          <div>
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Štatistiky cestovných príkazov</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Prehľad bude dostupný čoskoro</p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {[
+            { label: "Moje cestovné príkazy", value: myTravelOrders, icon: Plane, iconBg: "bg-teal-50 dark:bg-teal-900/40", iconColor: "text-teal-600 dark:text-teal-400" },
+            { label: "Čaká na moje schválenie", value: pendingMyApproval, icon: Clock, iconBg: "bg-amber-50 dark:bg-amber-900/40", iconColor: "text-amber-600 dark:text-amber-400" },
+          ].map(({ label, value, icon: Icon, iconBg, iconColor }) => (
+            <div
+              key={label}
+              className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 p-5 flex items-start gap-4"
+            >
+              <div className={`p-2 rounded-lg ${iconBg}`}>
+                <Icon size={18} className={iconColor} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
     </div>

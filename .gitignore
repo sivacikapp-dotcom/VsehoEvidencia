@@ -30,8 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — never commit real secrets; commit .env.example instead
+.env
+.env.*
+!.env.example
 
 # vercel
 .vercel
@@ -41,3 +43,6 @@ yarn-error.log*
 next-env.d.ts
 
 /src/generated/prisma
+
+# Uploaded files — store on object storage in production, never commit
+/uploads/

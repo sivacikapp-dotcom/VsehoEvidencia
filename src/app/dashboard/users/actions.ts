@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
-import bcrypt from "bcryptjs"
+import { hashPassword, verifyPassword } from "@/lib/password"
 import type { Role } from "@/generated/prisma/enums"
 import { createAuditLog } from "@/lib/auditLog"
 
@@ -24,8 +24,7 @@ function validatePassword(password: string): string | null {
   return null
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getCallerUsername(session: any): string | null {
+function getCallerUsername(session: Awaited<ReturnType<typeof getServerSession<typeof authOptions>>>): string | null {
   return session?.user?.username ?? null
 }
 
@@ -76,8 +75,7 @@ async function countActiveAdmins(): Promise<number> {
 
 export async function createUser(formData: FormData): Promise<Result> {
   const session = await getServerSession(authOptions)
-  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
-  if (!session || !callerRoles.includes("SPRAVCA_APLIKACIE")) {
+  if (!session?.user?.roles.includes("SPRAVCA_APLIKACIE")) {
     return { error: "Nemáte oprávnenie vytvárať používateľov." }
   }
 
@@ -144,7 +142,7 @@ export async function createUser(formData: FormData): Promise<Result> {
   }
 
   try {
-    const hash = await bcrypt.hash(password, 12)
+    const hash = await hashPassword(password)
     const created = await prisma.user.create({
       data: {
         username,
@@ -405,9 +403,8 @@ export async function changePassword(
   if (!session) return { error: "Nie ste prihlásený." }
 
   const callerId = parseInt(session.user.id)
-  const callerRoles = (session?.user as { roles?: string[] })?.roles ?? []
   const isSelf = callerId === userId
-  const isAdmin = callerRoles.includes("SPRAVCA_APLIKACIE")
+  const isAdmin = session.user.roles.includes("SPRAVCA_APLIKACIE")
 
   // Správca aplikácie môže zmeniť heslo sám sebe; ostatní nemôžu meniť heslo iným
   if (!isSelf && !isAdmin) {
@@ -424,7 +421,7 @@ export async function changePassword(
   if (!targetUser) return { error: "Používateľ neexistuje." }
 
   try {
-    const hash = await bcrypt.hash(newPassword, 12)
+    const hash = await hashPassword(newPassword)
     await prisma.user.update({ where: { id: userId }, data: { password: hash } })
 
     await createAuditLog({

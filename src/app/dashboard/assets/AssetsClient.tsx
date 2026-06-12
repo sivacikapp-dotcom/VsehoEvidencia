@@ -147,6 +147,7 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
   const [filterIsSecurity, setFilterIsSecurity] = useState<"" | "true" | "false">("")
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc")
+  const [returnError, setReturnError] = useState<string | null>(null)
 
   const cols = !isManager ? SECURITY_COLS : isSecurity ? MANAGER_COLS_WITH_BP : MANAGER_COLS
   const storageKey = !isManager ? `ve_t_assets_sec2_${currentUserId}` : isSecurity ? `ve_t_assets_mgrbp2_${currentUserId}` : `ve_t_assets2_${currentUserId}`
@@ -283,9 +284,10 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
 
   async function handleReturn(asset: Asset) {
     if (!confirm(`Naozaj chcete vrátiť majetok „${asset.name}" (${asset.serialNumber ?? "—"})?\nPriradenie bude uzavreté.`)) return
+    setReturnError(null)
     startTransition(async () => {
       const result = await returnAsset(asset.id, currentUserName)
-      if (result.error) alert(result.error)
+      if (result.error) setReturnError(result.error)
       else router.refresh()
     })
   }
@@ -547,6 +549,12 @@ export default function AssetsClient({ assets, users, rooms, userRoles, currentU
         </div>
       </div>
 
+      {returnError && (
+        <div className="shrink-0 mx-8 mb-2 flex items-center gap-2 px-4 py-2.5 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg text-sm text-red-700 dark:text-red-400">
+          <span className="flex-1">{returnError}</span>
+          <button onClick={() => setReturnError(null)} className="opacity-60 hover:opacity-100"><X size={14} /></button>
+        </div>
+      )}
       <div className="flex-1 min-h-0 px-8 pb-8">
         <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden h-full flex flex-col">
           <div className="flex-1 overflow-x-auto overflow-y-auto">

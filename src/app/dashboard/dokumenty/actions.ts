@@ -12,6 +12,27 @@ import { extractDocText } from "@/lib/extractText"
 import { notifyDocumentAdded, notifyDocumentDeleted } from "@/lib/notificationHelpers"
 import { createAuditLog } from "@/lib/auditLog"
 
+// Allowed extensions for document file uploads (no executables).
+const ALLOWED_DOC_EXTENSIONS = new Set([
+  ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".odt", ".ods",
+  ".txt", ".csv", ".md", ".log",
+  ".png", ".jpg", ".jpeg", ".gif",
+  ".eml", ".msg",
+])
+
+/**
+ * Validates the uploaded file's extension and size.
+ * Returns the lower-cased extension on success, throws on rejection.
+ */
+function validateDocUpload(file: File, maxMB = 50): string {
+  if (file.size > maxMB * 1024 * 1024) throw new Error(`Súbor je príliš veľký. Maximum je ${maxMB} MB.`)
+  const ext = path.extname(file.name).toLowerCase()
+  if (!ext || !ALLOWED_DOC_EXTENSIONS.has(ext)) {
+    throw new Error(`Nepodporovaný formát súboru „${ext || "(bez prípony)"}". Povolené: pdf, doc, docx, xls, xlsx, odt, ods, txt, csv, png, jpg, jpeg, gif, eml, msg.`)
+  }
+  return ext
+}
+
 async function getSession(_opts: { mutation?: boolean } = {}) {
   const session = await getServerSession(authOptions)
   if (!session) throw new Error("Neautorizovaný")
@@ -131,7 +152,7 @@ export async function createDocument(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -214,7 +235,7 @@ export async function updateDocument(formData: FormData) {
   } else if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -352,7 +373,7 @@ export async function createDocumentDraft(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -509,7 +530,7 @@ export async function createAttachmentDraft(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -631,7 +652,7 @@ export async function createDocumentVersion(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -743,7 +764,7 @@ export async function createAttachmentVersion(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -933,7 +954,7 @@ export async function createDocumentAttachment(formData: FormData) {
   if (file && file.size > 0) {
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -1015,7 +1036,7 @@ export async function updateDocumentAttachment(formData: FormData) {
     }
     const uploadDir = path.join(process.cwd(), "uploads", "docs")
     await mkdir(uploadDir, { recursive: true })
-    const ext = path.extname(file.name)
+    const ext = validateDocUpload(file)
     const storedName = `${randomUUID()}${ext}`
     const bytes = await file.arrayBuffer()
     await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -1122,7 +1143,7 @@ export async function addDocumentAuxFile(documentId: number, formData: FormData)
 
   const uploadDir = path.join(process.cwd(), "uploads", "docs")
   await mkdir(uploadDir, { recursive: true })
-  const ext = path.extname(file.name)
+  const ext = validateDocUpload(file)
   const storedName = `${randomUUID()}${ext}`
   const bytes = await file.arrayBuffer()
   await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
@@ -1166,7 +1187,7 @@ export async function addAttachmentAuxFile(attachmentId: number, formData: FormD
 
   const uploadDir = path.join(process.cwd(), "uploads", "docs")
   await mkdir(uploadDir, { recursive: true })
-  const ext = path.extname(file.name)
+  const ext = validateDocUpload(file)
   const storedName = `${randomUUID()}${ext}`
   const bytes = await file.arrayBuffer()
   await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))

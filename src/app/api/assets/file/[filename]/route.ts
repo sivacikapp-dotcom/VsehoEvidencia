@@ -30,7 +30,7 @@ export async function GET(
 
   const session = await getServerSession(authOptions)
   if (!session) return new NextResponse("Unauthorized", { status: 401 })
-  if ((session.user.roles as string[]).includes("SPRAVCA_APLIKACIE")) {
+  if (session.user.roles.includes("SPRAVCA_APLIKACIE")) {
     return new NextResponse("Forbidden", { status: 403 })
   }
 
@@ -39,7 +39,7 @@ export async function GET(
   })
   if (!attachment) return new NextResponse("Not found", { status: 404 })
 
-  const userRoles = session.user.roles as Role[]
+  const userRoles = session.user.roles
   const isManager = userRoles.includes("SPRAVCA_MAJETKU")
   const isSecurityWorker = userRoles.includes("BEZPECNOSTNY_PRACOVNIK")
 
