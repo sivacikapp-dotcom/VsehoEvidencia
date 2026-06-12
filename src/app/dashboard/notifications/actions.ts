@@ -10,6 +10,55 @@ import type { AssetType } from "@/generated/prisma/enums"
 
 type Result = { error?: string; success?: boolean }
 
+export type SoftNotificationData = {
+  id: number
+  type: string
+  title: string
+  message: string
+  createdAt: string
+  assetId: number | null
+  travelOrderId: number | null
+  documentId: number | null
+  documentAgendaId: number | null
+}
+
+export async function fetchSoftNotifications(): Promise<SoftNotificationData[]> {
+  const session = await getServerSession(authOptions)
+  if (!session) return []
+  const userId = parseInt(session.user.id)
+  const raw = await prisma.notification.findMany({
+    where: { userId, mustAcknowledge: false, dismissedAt: null },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+    include: { document: { select: { agendaId: true } } },
+  })
+  return raw.map((n) => ({
+    id: n.id,
+    type: n.type as string,
+    title: n.title,
+    message: n.message,
+    createdAt: n.createdAt.toLocaleString("sk-SK", {
+      day: "2-digit", month: "2-digit", year: "numeric",
+      hour: "2-digit", minute: "2-digit",
+    }),
+    assetId: n.assetId,
+    travelOrderId: n.travelOrderId,
+    documentId: n.documentId,
+    documentAgendaId: n.document?.agendaId ?? null,
+  }))
+}
+
+export async function dismissTravelOrderNotifications(travelOrderId: number): Promise<void> {
+  const session = await getServerSession(authOptions)
+  if (!session) return
+  const userId = parseInt(session.user.id)
+  await prisma.notification.updateMany({
+    where: { userId, travelOrderId, mustAcknowledge: false, dismissedAt: null },
+    data: { dismissedAt: new Date() },
+  })
+  revalidatePath("/dashboard")
+}
+
 export async function dismissNotification(notificationId: number): Promise<Result> {
   const session = await getServerSession(authOptions)
   if (!session) return { error: "Nie ste prihlásený." }

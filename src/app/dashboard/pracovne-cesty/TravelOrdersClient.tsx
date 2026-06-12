@@ -41,6 +41,7 @@ interface Props {
   currentUserId: number
   userRoles: string[]
   supervisors: { id: number; firstName: string; lastName: string }[]
+  currentUserSupervisorId?: number | null
   isAppAdmin?: boolean
 }
 
@@ -70,7 +71,7 @@ function Th({ label, colKey, sortKey, sortDir, onSort }: {
   )
 }
 
-export default function TravelOrdersClient({ orders, currentUserId, userRoles, supervisors, isAppAdmin = false }: Props) {
+export default function TravelOrdersClient({ orders, currentUserId, userRoles, supervisors, currentUserSupervisorId, isAppAdmin = false }: Props) {
   const router = useRouter()
   const [search, setSearch] = useState("")
   const [filterTypes, setFilterTypes] = useState<Set<string>>(new Set())
@@ -305,6 +306,7 @@ export default function TravelOrdersClient({ orders, currentUserId, userRoles, s
         <NewTravelOrderModal
           type={newType}
           supervisors={supervisors}
+          defaultSupervisorId={currentUserSupervisorId ?? undefined}
           onClose={() => setShowNewModal(false)}
           onCreated={() => {
             setShowNewModal(false)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { useSession, signOut } from "next-auth/react"
 import {
   Bell, X, LogOut, KeyRound, Sun, Moon, Loader2,
@@ -12,7 +12,7 @@ import {
 import type { Role } from "@/generated/prisma/enums"
 import { useTheme } from "./ThemeProvider"
 import { changePassword } from "@/app/dashboard/my-card/actions"
-import { dismissNotification } from "@/app/dashboard/notifications/actions"
+import { dismissNotification, fetchSoftNotifications } from "@/app/dashboard/notifications/actions"
 
 export type SoftNotification = {
   id: number
@@ -23,6 +23,7 @@ export type SoftNotification = {
   assetId: number | null
   travelOrderId: number | null
   documentId: number | null
+  documentAgendaId: number | null
 }
 
 interface NavbarProps {
@@ -212,6 +213,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 export default function Navbar({ user, notifications }: NavbarProps) {
   const isAdmin = user.isAdminAccount ?? false
   const router = useRouter()
+  const pathname = usePathname()
   const { theme, toggle } = useTheme()
   const { data: sessionData, update } = useSession()
 
@@ -220,6 +222,7 @@ export default function Navbar({ user, notifications }: NavbarProps) {
   const [showChangePwd, setShowChangePwd] = useState(false)
   const [dismissed, setDismissed] = useState<Set<number>>(new Set())
   const [remaining, setRemaining] = useState<number | null>(null)
+  const [liveNotifications, setLiveNotifications] = useState<SoftNotification[]>(notifications)
 
   const notifRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
@@ -260,13 +263,24 @@ export default function Navbar({ user, notifications }: NavbarProps) {
     return () => document.removeEventListener("mousedown", onDown)
   }, [])
 
+  // Refresh notifications on each navigation so the bell stays in sync
+  useEffect(() => {
+    fetchSoftNotifications().then((data) => {
+      setLiveNotifications(data)
+      setDismissed(new Set())
+    })
+  }, [pathname])
+
   async function handleDismiss(id: number) {
     setDismissed(prev => new Set(prev).add(id))
     await dismissNotification(id)
-    router.refresh()
+    fetchSoftNotifications().then((data) => {
+      setLiveNotifications(data)
+      setDismissed(new Set())
+    })
   }
 
-  const visible = notifications.filter(n => !dismissed.has(n.id))
+  const visible = liveNotifications.filter(n => !dismissed.has(n.id))
   const initials = user.name.split(" ").map(w => w[0] ?? "").join("").toUpperCase().slice(0, 2)
 
   return (
@@ -321,8 +335,15 @@ export default function Navbar({ user, notifications }: NavbarProps) {
                   {visible.map(n => {
                     const cfg = NOTIF_CONFIG[n.type] ?? { icon: Bell, color: "text-gray-400" }
                     const Icon = cfg.icon
-                    return (
-                      <div key={n.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                    const href = n.travelOrderId
+                      ? `/dashboard/pracovne-cesty/${n.travelOrderId}`
+                      : n.assetId
+                      ? `/dashboard/assets/${n.assetId}`
+                      : n.documentId && n.documentAgendaId
+                      ? `/dashboard/dokumenty/${n.documentAgendaId}/${n.documentId}`
+                      : null
+                    const inner = (
+                      <>
                         <div className={`mt-0.5 shrink-0 ${cfg.color}`}>
                           <Icon size={15} />
                         </div>
@@ -331,9 +352,25 @@ export default function Navbar({ user, notifications }: NavbarProps) {
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 whitespace-pre-line line-clamp-2">{n.message}</p>
                           <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">{n.createdAt}</p>
                         </div>
+                      </>
+                    )
+                    return (
+                      <div key={n.id} className="flex items-start gap-1 pr-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                        {href ? (
+                          <button
+                            onClick={() => { router.push(href); setShowNotif(false) }}
+                            className="flex items-start gap-3 flex-1 min-w-0 px-4 py-3 text-left"
+                          >
+                            {inner}
+                          </button>
+                        ) : (
+                          <div className="flex items-start gap-3 flex-1 min-w-0 px-4 py-3">
+                            {inner}
+                          </div>
+                        )}
                         <button
                           onClick={() => handleDismiss(n.id)}
-                          className="shrink-0 p-1 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-300 rounded transition-colors"
+                          className="shrink-0 p-1 mt-3 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-300 rounded transition-colors"
                           title="Zatvoriť"
                         >
                           <X size={13} />

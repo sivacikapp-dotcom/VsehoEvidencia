@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState, useTransition, useRef } from "react"
+import { useState, useTransition, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/lib/labels"
 import type { TravelOrderType, TravelOrderStatus, TransportMeans, VehicleCategory } from "@/generated/prisma/enums"
 import { kmRateLabel, buildDayInfos, formatLocalDate, type TravelRates, DEFAULT_TRAVEL_RATES } from "@/lib/travelUtils"
-import { fmtDate, fmtDateTime } from "@/lib/formatDate"
+import { fmtDate, fmtDateTime, toDatetimeLocalInput } from "@/lib/formatDate"
 import type { DayInfo } from "@/lib/travelUtils"
 import {
   submitTravelOrder,
@@ -34,6 +34,7 @@ import {
   uploadExpenseReportAttachment,
   deleteExpenseReportAttachment,
 } from "../actions"
+import { dismissTravelOrderNotifications } from "@/app/dashboard/notifications/actions"
 import NewTravelOrderModal from "../NewTravelOrderModal"
 import type { InitialValues } from "../NewTravelOrderModal"
 import ExpenseReportModal from "../ExpenseReportModal"
@@ -73,6 +74,7 @@ type ExpenseReport = {
   managerApprovedAt: string | null
   managerRejectedAt: string | null
   rejectionNote: string | null
+  rejectedSnapshot: string | null
   updatedAt: string
   attachments: {
     id: number
@@ -141,6 +143,10 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
   const [showExpense, setShowExpense] = useState(false)
   const [actionError, setActionError] = useState("")
 
+  useEffect(() => {
+    dismissTravelOrderNotifications(order.id)
+  }, [order.id])
+
   const isOwner = order.userId === currentUserId
   const isSupervisor = order.supervisorId === currentUserId
   const isSpravcaPC = userRoles.includes("SPRAVCA_PRACOVNYCH_CIEST")
@@ -172,8 +178,8 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
     purpose: order.purpose,
     startLocation: order.startLocation,
     destination: order.destination,
-    departureAt: order.departureAt.slice(0, 16),
-    returnAt: order.returnAt.slice(0, 16),
+    departureAt: toDatetimeLocalInput(order.departureAt),
+    returnAt: toDatetimeLocalInput(order.returnAt),
     transport: order.transport,
     vehicleCategory: order.vehicleCategory ?? "",
     vehicleRegPlate: order.vehicleRegPlate ?? "",
@@ -338,6 +344,7 @@ export default function TravelOrderDetailClient({ order, currentUserId, userRole
                 orderDepartureAt={order.departureAt}
                 orderReturnAt={order.returnAt}
                 fmtEUR={fmtEUR}
+                rejectedSnapshot={order.expenseReport.rejectedSnapshot}
               />
             </div>
           )}
@@ -918,8 +925,26 @@ function sameTransportArrays(a: TransportMeans[], b: TransportMeans[]) {
   return sa.every((v, i) => v === sb[i])
 }
 
+type RejectedSnapshot = {
+  rejectedBy: "supervisor" | "manager"
+  actualDepartureAt: string
+  actualReturnAt: string
+  actualTransport: TransportMeans[]
+  dietAmount: number
+  kmDriven: number | null
+  kmCompensation: number | null
+  publicTransportCost: number | null
+  taxiCost: number | null
+  accommodation: number | null
+  parking: number | null
+  otherExpenses: number | null
+  foreignDiet: number | null
+  pocketMoneyPaid: number | null
+  totalExpenses: number
+}
+
 function ExpenseReportView({
-  er, orderType, orderTransport, orderDepartureAt, orderReturnAt, fmtEUR,
+  er, orderType, orderTransport, orderDepartureAt, orderReturnAt, fmtEUR, rejectedSnapshot,
 }: {
   er: ExpenseReport
   orderType: TravelOrderType
@@ -927,6 +952,7 @@ function ExpenseReportView({
   orderDepartureAt: string
   orderReturnAt: string
   fmtEUR: (n: number | null) => string
+  rejectedSnapshot?: string | null
 }) {
   const storedMeals = er.mealsPerDay ? JSON.parse(er.mealsPerDay) : []
   const dayInfos: DayInfo[] = buildDayInfos(er.actualDepartureAt, er.actualReturnAt, storedMeals)
@@ -967,6 +993,43 @@ function ExpenseReportView({
   const effectiveTransport = (er.actualTransport?.length ? er.actualTransport : orderTransport)
   const isOwnVehicle = effectiveTransport.includes("VLASTNE_VOZIDLO")
 
+  // Zmeny oproti zamietnutému vyúčtovaniu
+  const snap: RejectedSnapshot | null = rejectedSnapshot ? (() => { try { return JSON.parse(rejectedSnapshot) } catch { return null } })() : null
+  const rejDiffs: { label: string; original: string; changed: string }[] = []
+  if (snap) {
+    const fmtEuro = (v: number | null) => v != null ? `${v.toFixed(2)} €` : "—"
+    if (snap.actualDepartureAt !== er.actualDepartureAt)
+      rejDiffs.push({ label: "Odchod", original: fmtDateTime(snap.actualDepartureAt), changed: fmtDateTime(er.actualDepartureAt) })
+    if (snap.actualReturnAt !== er.actualReturnAt)
+      rejDiffs.push({ label: "Návrat", original: fmtDateTime(snap.actualReturnAt), changed: fmtDateTime(er.actualReturnAt) })
+    if (!sameTransportArrays(snap.actualTransport, er.actualTransport ?? []))
+      rejDiffs.push({ label: "Doprava", original: snap.actualTransport.map(t => transportMeansLabels[t]).join(", ") || "—", changed: (er.actualTransport ?? []).map(t => transportMeansLabels[t]).join(", ") || "—" })
+    if (snap.dietAmount !== er.dietAmount)
+      rejDiffs.push({ label: "Diéty", original: fmtEuro(snap.dietAmount), changed: fmtEuro(er.dietAmount) })
+    if (snap.kmDriven !== er.kmDriven)
+      rejDiffs.push({ label: "Počet km", original: snap.kmDriven != null ? `${snap.kmDriven} km` : "—", changed: er.kmDriven != null ? `${er.kmDriven} km` : "—" })
+    if (snap.kmCompensation !== er.kmCompensation)
+      rejDiffs.push({ label: "Náhrada km", original: fmtEuro(snap.kmCompensation), changed: fmtEuro(er.kmCompensation) })
+    if (snap.publicTransportCost !== er.publicTransportCost)
+      rejDiffs.push({ label: "Ver. doprava", original: fmtEuro(snap.publicTransportCost), changed: fmtEuro(er.publicTransportCost) })
+    if (snap.taxiCost !== er.taxiCost)
+      rejDiffs.push({ label: "Taxi", original: fmtEuro(snap.taxiCost), changed: fmtEuro(er.taxiCost) })
+    if (snap.accommodation !== er.accommodation)
+      rejDiffs.push({ label: "Ubytovanie", original: fmtEuro(snap.accommodation), changed: fmtEuro(er.accommodation) })
+    if (snap.parking !== er.parking)
+      rejDiffs.push({ label: "Parkovné", original: fmtEuro(snap.parking), changed: fmtEuro(er.parking) })
+    if (snap.otherExpenses !== er.otherExpenses)
+      rejDiffs.push({ label: "Ostatné výd.", original: fmtEuro(snap.otherExpenses), changed: fmtEuro(er.otherExpenses) })
+    if (snap.foreignDiet !== er.foreignDiet)
+      rejDiffs.push({ label: "Zahr. diéta", original: fmtEuro(snap.foreignDiet), changed: fmtEuro(er.foreignDiet) })
+    if (snap.pocketMoneyPaid !== er.pocketMoneyPaid)
+      rejDiffs.push({ label: "Vreckové", original: fmtEuro(snap.pocketMoneyPaid), changed: fmtEuro(er.pocketMoneyPaid) })
+    if (snap.totalExpenses !== er.totalExpenses)
+      rejDiffs.push({ label: "Celkom", original: fmtEuro(snap.totalExpenses), changed: fmtEuro(er.totalExpenses) })
+  }
+
+  const rejectedByLabel = snap?.rejectedBy === "manager" ? "správcom pracovných ciest" : "nadriadeným"
+
   return (
     <div className="space-y-3 text-sm">
 
@@ -984,6 +1047,27 @@ function ExpenseReportView({
                   <span className="line-through text-gray-400 dark:text-gray-500">{d.original}</span>
                   <span className="mx-1.5 text-amber-500">→</span>
                   <span className="font-medium text-amber-800 dark:text-amber-300">{d.changed}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Zmeny po zamietnutí */}
+      {rejDiffs.length > 0 && (
+        <div className="rounded-lg border border-rose-200 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 p-3 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-400">
+            Zmeny oproti zamietnutému vyúčtovaniu ({rejectedByLabel})
+          </p>
+          <div className="space-y-1.5">
+            {rejDiffs.map((d) => (
+              <div key={d.label} className="grid grid-cols-[7rem_1fr] gap-2 text-xs">
+                <span className="text-rose-600 dark:text-rose-400 font-medium pt-0.5">{d.label}</span>
+                <span>
+                  <span className="line-through text-gray-400 dark:text-gray-500">{d.original}</span>
+                  <span className="mx-1.5 text-rose-500">→</span>
+                  <span className="font-medium text-rose-800 dark:text-rose-300">{d.changed}</span>
                 </span>
               </div>
             ))}

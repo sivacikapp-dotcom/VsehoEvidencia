@@ -49,6 +49,12 @@ export default async function PracovneCestyPage() {
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   })
 
+  // Nadriadený aktuálneho používateľa (pre predvolenú hodnotu v modáli)
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { supervisorId: true },
+  })
+
   const serialized = orders.map((o) => ({
     ...o,
     advanceEUR: isAppAdmin ? null : (o.advanceEUR ? Number(o.advanceEUR) : null),
@@ -71,6 +77,7 @@ export default async function PracovneCestyPage() {
         currentUserId={userId}
         userRoles={roles}
         supervisors={supervisors}
+        currentUserSupervisorId={currentUser?.supervisorId ?? null}
         isAppAdmin={isAppAdmin}
       />
     </div>

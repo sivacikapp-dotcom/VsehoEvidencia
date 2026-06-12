@@ -9,6 +9,7 @@ import { transportMeansLabels } from "@/lib/labels"
 interface Props {
   type: TravelOrderType
   supervisors: { id: number; firstName: string; lastName: string }[]
+  defaultSupervisorId?: number
   onClose: () => void
   onCreated: () => void
   // pre edit mode
@@ -44,7 +45,7 @@ const ALL_TRANSPORTS: TransportMeans[] = [
   "INE",
 ]
 
-export default function NewTravelOrderModal({ type, supervisors, onClose, onCreated, initial, orderId, onUpdated }: Props) {
+export default function NewTravelOrderModal({ type, supervisors, defaultSupervisorId, onClose, onCreated, initial, orderId, onUpdated }: Props) {
   const isEdit = !!orderId
   const isForeign = type === "ZAHRANICNY"
 
@@ -64,7 +65,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
     foreignCurrency: "EUR",
     pocketMoney: "",
     travelInsurance: false,
-    supervisorId: "",
+    supervisorId: defaultSupervisorId ? String(defaultSupervisorId) : "",
   })
 
   const [error, setError] = useState("")
@@ -406,9 +407,7 @@ export default function NewTravelOrderModal({ type, supervisors, onClose, onCrea
                   </option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">
-                Správca pracovných ciest schvaľuje automaticky ako druhý v poradí.
-              </p>
+
             </div>
           </section>
 

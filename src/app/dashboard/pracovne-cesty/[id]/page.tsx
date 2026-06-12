@@ -98,6 +98,7 @@ export default async function TravelOrderDetailPage({ params }: { params: Promis
           supervisorRejectedAt: er.supervisorRejectedAt?.toISOString() ?? null,
           managerApprovedAt: er.managerApprovedAt?.toISOString() ?? null,
           managerRejectedAt: er.managerRejectedAt?.toISOString() ?? null,
+          rejectedSnapshot: isAppAdmin ? null : (er.rejectedSnapshot ?? null),
           createdAt: er.createdAt.toISOString(),
           updatedAt: er.updatedAt.toISOString(),
           attachments: isAppAdmin ? [] : er.attachments.map((a) => ({

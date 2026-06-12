@@ -638,6 +638,8 @@ model TravelExpenseReport {
   managerRejectedAt    DateTime?
   managerId            Int?
   rejectionNote        String?
+  // Snímka hodnôt v čase posledného zamietnutia (JSON) — slúži na porovnanie zmien po opätovnom odoslaní
+  rejectedSnapshot     String?
 
   attachments     ExpenseReportAttachment[]
 

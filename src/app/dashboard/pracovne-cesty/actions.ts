@@ -37,6 +37,48 @@ function uid(user: { id: string }) {
   return parseInt(user.id)
 }
 
+export type RejectedSnapshot = {
+  rejectedBy: "supervisor" | "manager"
+  actualDepartureAt: string
+  actualReturnAt: string
+  actualTransport: TransportMeans[]
+  dietAmount: number
+  kmDriven: number | null
+  kmCompensation: number | null
+  publicTransportCost: number | null
+  taxiCost: number | null
+  accommodation: number | null
+  parking: number | null
+  otherExpenses: number | null
+  foreignDiet: number | null
+  pocketMoneyPaid: number | null
+  totalExpenses: number
+}
+
+function buildRejectedSnapshot(
+  report: { actualDepartureAt: Date; actualReturnAt: Date; actualTransport: TransportMeans[]; dietAmount: object; kmDriven: object | null; kmCompensation: object | null; publicTransportCost: object | null; taxiCost: object | null; accommodation: object | null; parking: object | null; otherExpenses: object | null; foreignDiet: object | null; pocketMoneyPaid: object | null; totalExpenses: object },
+  rejectedBy: "supervisor" | "manager"
+): RejectedSnapshot {
+  const n = (v: object | null) => (v != null ? Number(v) : null)
+  return {
+    rejectedBy,
+    actualDepartureAt: report.actualDepartureAt.toISOString(),
+    actualReturnAt: report.actualReturnAt.toISOString(),
+    actualTransport: report.actualTransport,
+    dietAmount: Number(report.dietAmount),
+    kmDriven: n(report.kmDriven),
+    kmCompensation: n(report.kmCompensation),
+    publicTransportCost: n(report.publicTransportCost),
+    taxiCost: n(report.taxiCost),
+    accommodation: n(report.accommodation),
+    parking: n(report.parking),
+    otherExpenses: n(report.otherExpenses),
+    foreignDiet: n(report.foreignDiet),
+    pocketMoneyPaid: n(report.pocketMoneyPaid),
+    totalExpenses: Number(report.totalExpenses),
+  }
+}
+
 async function dismissPendingNotification(
   userId: number,
   travelOrderId: number,
@@ -554,7 +596,7 @@ export async function supervisorApproveExpenseReport(travelOrderId: number) {
 
   await prisma.travelExpenseReport.update({
     where: { travelOrderId },
-    data: { status: "PENDING_MANAGER", supervisorApprovedAt: new Date(), supervisorRejectedAt: null },
+    data: { status: "PENDING_MANAGER", supervisorApprovedAt: new Date(), supervisorRejectedAt: null, rejectedSnapshot: null },
   })
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_SUBMITTED")
@@ -585,9 +627,11 @@ export async function supervisorRejectExpenseReport(travelOrderId: number, note:
   const report = await getReport(travelOrderId)
   if (report.status !== "PENDING_SUPERVISOR") throw new Error("Vyúčtovanie nečaká na schválenie nadriadeného.")
 
+  const snapshot = buildRejectedSnapshot(report, "supervisor")
+
   await prisma.travelExpenseReport.update({
     where: { travelOrderId },
-    data: { status: "DRAFT", supervisorRejectedAt: new Date(), rejectionNote: note },
+    data: { status: "DRAFT", supervisorRejectedAt: new Date(), rejectionNote: note, rejectedSnapshot: JSON.stringify(snapshot) },
   })
 
   await dismissPendingNotification(uid(user), travelOrderId, "EXPENSE_REPORT_SUBMITTED")
@@ -621,6 +665,7 @@ export async function managerApproveExpenseReport(travelOrderId: number) {
       managerId: uid(user),
       managerApprovedAt: new Date(),
       managerRejectedAt: null,
+      rejectedSnapshot: null,
     },
   })
 
@@ -648,6 +693,8 @@ export async function managerRejectExpenseReport(travelOrderId: number, note: st
   const report = await getReport(travelOrderId)
   if (report.status !== "PENDING_MANAGER") throw new Error("Vyúčtovanie nečaká na schválenie správcu PC.")
 
+  const snapshot = buildRejectedSnapshot(report, "manager")
+
   await prisma.travelExpenseReport.update({
     where: { travelOrderId },
     data: {
@@ -655,6 +702,7 @@ export async function managerRejectExpenseReport(travelOrderId: number, note: st
       managerId: uid(user),
       managerRejectedAt: new Date(),
       rejectionNote: note,
+      rejectedSnapshot: JSON.stringify(snapshot),
     },
   })
 

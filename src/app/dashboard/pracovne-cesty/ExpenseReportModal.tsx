@@ -3,6 +3,7 @@
 import { useState, useTransition, useEffect, useCallback } from "react"
 import { X, Loader2, Plus, Trash2 } from "lucide-react"
 import { upsertExpenseReport, submitExpenseReport } from "./actions"
+import { toDatetimeLocalInput } from "@/lib/formatDate"
 import type { TravelOrderType, TransportMeans, VehicleCategory } from "@/generated/prisma/enums"
 import {
   buildDayInfos,
@@ -121,10 +122,10 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
   const effectiveEngineVolume = ownVehicle && actualEngineVolume ? parseInt(actualEngineVolume) : null
 
   const [actualDep, setActualDep] = useState(
-    existing?.actualDepartureAt?.slice(0, 16) ?? order.departureAt.slice(0, 16)
+    toDatetimeLocalInput(existing?.actualDepartureAt ?? order.departureAt)
   )
   const [actualRet, setActualRet] = useState(
-    existing?.actualReturnAt?.slice(0, 16) ?? order.returnAt.slice(0, 16)
+    toDatetimeLocalInput(existing?.actualReturnAt ?? order.returnAt)
   )
 
   // Per-day meals
@@ -132,8 +133,8 @@ export default function ExpenseReportModal({ order, existing, readOnly, onClose,
     const stored: DayMealEntry[] = existing?.mealsPerDay
       ? (JSON.parse(existing.mealsPerDay) as DayMealEntry[])
       : []
-    const dep = existing?.actualDepartureAt?.slice(0, 16) ?? order.departureAt.slice(0, 16)
-    const ret = existing?.actualReturnAt?.slice(0, 16) ?? order.returnAt.slice(0, 16)
+    const dep = toDatetimeLocalInput(existing?.actualDepartureAt ?? order.departureAt)
+    const ret = toDatetimeLocalInput(existing?.actualReturnAt ?? order.returnAt)
     return buildDayInfos(dep, ret, stored, r).map(({ date, breakfast, lunch, dinner }) => ({
       date, breakfast, lunch, dinner,
     }))

@@ -26,6 +26,7 @@ export default async function DashboardLayout({
       where: { userId, mustAcknowledge: false, dismissedAt: null },
       orderBy: { createdAt: "desc" },
       take: 30,
+      include: { document: { select: { agendaId: true } } },
     }),
   ])
 
@@ -54,6 +55,7 @@ export default async function DashboardLayout({
     assetId: n.assetId,
     travelOrderId: n.travelOrderId,
     documentId: n.documentId,
+    documentAgendaId: n.document?.agendaId ?? null,
   }))
 
   const user = {
