@@ -37,7 +37,7 @@ interface Props {
     popis: string | null
     utvar: { id: number; nazov: string } | null
     plan: { id: number; znacka: string; nazov: string; lehota: number }
-    spracovatelId: number
+    spracovatelId: number | null
     spracovatel: string
     status: string
     datumOtvorenia: string
@@ -296,13 +296,13 @@ export default function SpisDetailClient({ spis, plans, spracovatelov, utvary, a
                 <div>
                   <label className={labelCls}>Spracovateľ</label>
                   {isAdmin ? (
-                    <select name="spracovatelId" form="spis-edit" defaultValue={spis.spracovatelId} className={inputCls}>
+                    <select name="spracovatelId" form="spis-edit" defaultValue={spis.spracovatelId ?? undefined} className={inputCls}>
                       {spracovatelov.map(u => <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>)}
                     </select>
                   ) : (
                     <>
                       <p className="text-sm text-gray-800 dark:text-gray-200 py-1">{spis.spracovatel}</p>
-                      <input type="hidden" name="spracovatelId" form="spis-edit" value={spis.spracovatelId} />
+                      <input type="hidden" name="spracovatelId" form="spis-edit" value={spis.spracovatelId ?? undefined} />
                     </>
                   )}
                 </div>

@@ -95,7 +95,7 @@ export default async function SpisDetailPage({ params }: { params: Promise<{ id:
           utvar: spis.utvar ? { id: spis.utvar.id, nazov: spis.utvar.nazov } : null,
           plan: { id: spis.plan.id, znacka: spis.plan.znacka, nazov: spis.plan.nazov, lehota: spis.plan.lehota },
           spracovatelId: spis.spracovatelId,
-          spracovatel: `${spis.spracovatel.firstName} ${spis.spracovatel.lastName}`,
+          spracovatel: spis.spracovatel ? `${spis.spracovatel.firstName} ${spis.spracovatel.lastName}` : "",
           status: spis.status,
           datumOtvorenia: spis.datumOtvorenia.toISOString().split("T")[0],
           datumUzatvorenia: spis.datumUzatvorenia ? spis.datumUzatvorenia.toISOString().split("T")[0] : null,
