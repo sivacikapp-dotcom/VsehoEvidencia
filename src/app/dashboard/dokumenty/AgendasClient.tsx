@@ -357,6 +357,7 @@ function escapeRegex(s: string) {
 function HighlightText({ text, query }: { text: string; query: string }) {
   const q = query.trim()
   if (!q) return <>{text}</>
+  // eslint-disable-next-line security/detect-non-literal-regexp -- input is sanitized by escapeRegex()
   const parts = text.split(new RegExp(`(${escapeRegex(q)})`, "gi"))
   return (
     <>

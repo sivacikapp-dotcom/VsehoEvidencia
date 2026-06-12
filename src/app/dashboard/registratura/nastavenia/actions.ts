@@ -10,8 +10,8 @@ import type { Role } from "@/generated/prisma/enums"
 // ─── Registratúrny plán ───────────────────────────────────────────────────────
 
 function isValidZnacka(znacka: string): boolean {
-  // 1–3 levels separated by dots, each level: letters/digits/hyphens, max 2 dots
-  return /^[A-Za-z0-9][A-Za-z0-9]*(\.[A-Za-z0-9][A-Za-z0-9]*){0,2}$/.test(znacka.trim())
+  // eslint-disable-next-line security/detect-unsafe-regex -- false positive: dot (.) is not in [A-Za-z0-9] so no backtracking ambiguity; anchored regex; bounded {0,2}
+  return /^[A-Za-z0-9]+(\.[A-Za-z0-9]+){0,2}$/.test(znacka.trim())
 }
 
 export async function createPlanItem(data: {
