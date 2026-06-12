@@ -185,8 +185,8 @@ export async function assignAsset(
       // Notify previous recipients whose asset was taken (blocking)
       await Promise.all(
         prevRecipients
-          .filter(r => r.userId !== targetId)
-          .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id)))
+          .filter(r => r.userId !== null && r.userId !== targetId)
+          .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId!, parseInt(session.user.id)))
       )
     } else {
       await prisma.assetRoomAssignment.create({
@@ -205,9 +205,9 @@ export async function assignAsset(
       })
       // Notify previous recipients whose asset was moved to room (blocking)
       await Promise.all(
-        prevRecipients.map(r =>
-          notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id))
-        )
+        prevRecipients
+          .filter(r => r.userId !== null)
+          .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId!, parseInt(session.user.id)))
       )
     }
 
@@ -360,9 +360,9 @@ export async function returnAsset(
 
     // Notify recipients that their asset was returned (blocking)
     await Promise.all(
-      prevRecipients.map(r =>
-        notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId, parseInt(session.user.id))
-      )
+      prevRecipients
+        .filter(r => r.userId !== null)
+        .map(r => notifyAssetReturned(assetId, asset.type, asset.name, asset.serialNumber, r.userId!, parseInt(session.user.id)))
     )
     await createAuditLog({
       userId: parseInt(session.user.id), userEmail: session.user.email, userName: session.user.name,

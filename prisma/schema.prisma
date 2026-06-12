@@ -159,7 +159,8 @@ model AssetNote {
   noteType      AssetNoteType
   content       String        @db.VarChar(2000)
   authorRole    String
-  createdById   Int
+  createdById   Int?
+  createdBy     User?         @relation("AssetNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdByName String
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
@@ -279,14 +280,17 @@ model User {
   createdZaznamy     RegZaznam[] @relation("ZaznamCreatedBy")
   processedSpisy     Spis[]      @relation("SpisSpracovatel")
   createdSpisy       Spis[]      @relation("SpisCreatedBy")
+
+  assetNotes         AssetNote[]    @relation("AssetNoteCreatedBy")
+  documentNotes      DocumentNote[] @relation("DocumentNoteCreatedBy")
 }
 
 model AssetRecipientAssignment {
   id             Int       @id @default(autoincrement())
   assetId        Int
   asset          Asset     @relation(fields: [assetId], references: [id])
-  userId         Int
-  user           User      @relation(fields: [userId], references: [id])
+  userId         Int?
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   assignedAt     DateTime  @default(now())
   assignedBy     String
@@ -344,7 +348,7 @@ model Notification {
 model UserRoomAccess {
   userId Int
   roomId Int
-  user   User @relation(fields: [userId], references: [id])
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
   room   Room @relation(fields: [roomId], references: [id])
 
   @@id([userId, roomId])
@@ -481,7 +485,8 @@ model DocumentNote {
   documentId    Int
   document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   content       String   @db.VarChar(4000)
-  createdById   Int
+  createdById   Int?
+  createdBy     User?    @relation("DocumentNoteCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   createdByName String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt

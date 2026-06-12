@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
-function canEditNote(noteAuthorRole: string, noteCreatedById: number, userRoles: string[], userId: number): boolean {
+function canEditNote(noteAuthorRole: string, noteCreatedById: number | null, userRoles: string[], userId: number): boolean {
   if (noteAuthorRole === "BEZPECNOSTNY_PRACOVNIK") return userRoles.includes("BEZPECNOSTNY_PRACOVNIK")
   if (noteAuthorRole === "SPRAVCA_MAJETKU") return userRoles.includes("SPRAVCA_MAJETKU")
   if (noteAuthorRole === "PRIJEMCA") return noteCreatedById === userId

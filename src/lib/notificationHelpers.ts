@@ -387,7 +387,7 @@ export async function notifyAssetChanged(
 
   const userIds = new Set<number>()
 
-  if (recipientAssignment && !excludeUserIds.includes(recipientAssignment.userId)) {
+  if (recipientAssignment && recipientAssignment.userId !== null && !excludeUserIds.includes(recipientAssignment.userId)) {
     userIds.add(recipientAssignment.userId)
   }
 

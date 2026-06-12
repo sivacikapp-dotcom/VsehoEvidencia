@@ -52,7 +52,7 @@ export default async function AssetDetailPage({
 
   const currentUserId = parseInt(session.user.id)
   const isCurrentRecipient = isRecipient && asset.recipientAssignments.some(
-    a => !a.returnedAt && a.user.id === currentUserId
+    a => !a.returnedAt && a.user?.id === currentUserId
   )
 
   const userRoles = session.user.roles as Role[]
@@ -144,8 +144,8 @@ export default async function AssetDetailPage({
       }}
       recipientHistory={isAppAdmin ? [] : asset.recipientAssignments.map((a) => ({
         id: a.id,
-        userName: `${a.user.lastName} ${a.user.firstName}`,
-        userEmail: a.user.email,
+        userName: a.user ? `${a.user.lastName} ${a.user.firstName}` : "(vymazaný používateľ)",
+        userEmail: a.user?.email ?? "",
         assignedAt: a.assignedAt.toISOString().split("T")[0],
         assignedBy: a.assignedBy,
         assignmentNote: a.assignmentNote,

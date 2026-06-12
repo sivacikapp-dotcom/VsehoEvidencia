@@ -92,7 +92,7 @@ type NoteEntry = {
   noteType: AssetNoteType
   content: string
   authorRole: string
-  createdById: number
+  createdById: number | null
   createdByName: string
   createdAt: string
   updatedAt: string

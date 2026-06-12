@@ -61,8 +61,8 @@ export default async function ProtocolPage({
       assignment={
         a
           ? {
-              recipientName: `${a.user.firstName} ${a.user.lastName}`,
-              recipientEmail: a.user.email,
+              recipientName: a.user ? `${a.user.firstName} ${a.user.lastName}` : "(vymazaný používateľ)",
+              recipientEmail: a.user?.email ?? "",
               assignedAt: a.assignedAt.toISOString().split("T")[0],
               assignedBy: a.assignedBy,
               note: a.assignmentNote,
