@@ -23,7 +23,7 @@ const MIME_MAP: Record<string, string> = {
   msg: "application/vnd.ms-outlook",
 }
 
-function canAccess(roles: string[], zaznam: { spracovatelId: number }, userId: number) {
+function canAccess(roles: string[], zaznam: { spracovatelId: number | null }, userId: number) {
   if (roles.includes("SPRAVCA_REGISTRATURY") || roles.includes("PRACOVNIK_PODATELNE") || roles.includes("SPRAVCA_APLIKACIE")) return true
   return roles.includes("SPRACOVATEL_REGISTRATURY") && zaznam.spracovatelId === userId
 }
