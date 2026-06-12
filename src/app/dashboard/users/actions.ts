@@ -424,7 +424,8 @@ export async function deleteUser(userId: number): Promise<Result> {
     return { success: true }
   } catch (err) {
     console.error("[deleteUser]", err)
-    return { error: "Nastala chyba pri mazaní." }
+    const msg = err instanceof Error ? err.message : String(err)
+    return { error: `Nastala chyba pri mazaní: ${msg}` }
   }
 }
 
