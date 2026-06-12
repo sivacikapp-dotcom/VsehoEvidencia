@@ -308,12 +308,20 @@ export async function deleteUser(userId: number): Promise<Result> {
     otherSpravcaDok,
     otherSpravcaPC,
     otherSpravcaReg,
+    travelOrderCount,
+    postaCount,
+    zaznamCount,
+    spisCount,
   ] = await Promise.all([
     prisma.assetRecipientAssignment.count({ where: { userId, returnedAt: null } }),
     user.roles.includes("SPRAVCA_APLIKACIE") ? countActiveAdmins() : Promise.resolve(999),
     user.roles.includes("SPRAVCA_DOKUMENTOV")    ? countOtherActiveWithRole("SPRAVCA_DOKUMENTOV")    : Promise.resolve(1),
     user.roles.includes("SPRAVCA_PRACOVNYCH_CIEST") ? countOtherActiveWithRole("SPRAVCA_PRACOVNYCH_CIEST") : Promise.resolve(1),
     user.roles.includes("SPRAVCA_REGISTRATURY")  ? countOtherActiveWithRole("SPRAVCA_REGISTRATURY")  : Promise.resolve(1),
+    prisma.travelOrder.count({ where: { userId } }),
+    prisma.posta.count({ where: { createdById: userId } }),
+    prisma.regZaznam.count({ where: { OR: [{ spracovatelId: userId }, { createdById: userId }] } }),
+    prisma.spis.count({ where: { OR: [{ spracovatelId: userId }, { createdById: userId }] } }),
   ])
 
   const errors: string[] = []
@@ -358,6 +366,26 @@ export async function deleteUser(userId: number): Promise<Result> {
     errors.push("Registratúra: používateľ je jediný Správca registratúry — najprv priraďte túto rolu niekomu inému.")
   }
 
+  // Cestovné príkazy — vlastník
+  if (travelOrderCount > 0) {
+    errors.push(`Pracovné cesty: používateľ má ${travelOrderCount} ${travelOrderCount === 1 ? "cestovný príkaz" : "cestovných príkazov"} — pred zmazaním ich vyriešte alebo preveďte.`)
+  }
+
+  // Podateľňa — záznamy pošty vytvorené týmto používateľom
+  if (postaCount > 0) {
+    errors.push(`Registratúra: používateľ vytvoril ${postaCount} ${postaCount === 1 ? "záznam pošty" : "záznamy pošty"} — pred zmazaním ich preveďte na iného pracovníka.`)
+  }
+
+  // Registratúrne záznamy
+  if (zaznamCount > 0) {
+    errors.push(`Registratúra: používateľ je spracovateľom alebo autorom ${zaznamCount} ${zaznamCount === 1 ? "záznamu" : "záznamov"} — pred zmazaním ich preveďte.`)
+  }
+
+  // Spisy
+  if (spisCount > 0) {
+    errors.push(`Registratúra: používateľ je spracovateľom alebo autorom ${spisCount} ${spisCount === 1 ? "spisu" : "spisov"} — pred zmazaním ich preveďte.`)
+  }
+
   if (errors.length > 0) {
     return { errors, error: errors.join("\n") }
   }
@@ -365,6 +393,11 @@ export async function deleteUser(userId: number): Promise<Result> {
   try {
     // Odpoj admin účty, ktoré ukazujú na tohto používateľa (FK constraint)
     await prisma.user.updateMany({ where: { linkedUserId: userId }, data: { linkedUserId: null } })
+    // Odpoj voliteľné referencie z cestovných príkazov
+    await prisma.travelOrder.updateMany({ where: { supervisorId: userId }, data: { supervisorId: null } })
+    await prisma.travelOrder.updateMany({ where: { managerId: userId }, data: { managerId: null } })
+    // Zmaž notifikácie používateľa (FK bez cascade)
+    await prisma.notification.deleteMany({ where: { userId } })
     await prisma.user.delete({ where: { id: userId } })
     await createAuditLog({
       userId: parseInt(session.user.id),
