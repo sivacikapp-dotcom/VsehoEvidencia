@@ -35,7 +35,7 @@ export default async function ZaznamyPage() {
     cisloZaznamu: z.cisloZaznamu,
     kategoria: z.kategoria,
     rok: z.rok,
-    spracovatel: `${z.spracovatel.firstName} ${z.spracovatel.lastName}`,
+    spracovatel: z.spracovatel ? `${z.spracovatel.firstName} ${z.spracovatel.lastName}` : "",
     utvar: z.utvar?.nazov ?? null,
     formaZaznamu: z.formaZaznamu,
     vec: z.vec,

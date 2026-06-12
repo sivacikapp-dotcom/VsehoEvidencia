@@ -58,7 +58,7 @@ export default async function ZaznamDetailPage({ params }: { params: Promise<{ i
           kategoria: zaznam.kategoria,
           rok: zaznam.rok,
           spracovatelId: zaznam.spracovatelId,
-          spracovatel: `${zaznam.spracovatel.firstName} ${zaznam.spracovatel.lastName}`,
+          spracovatel: zaznam.spracovatel ? `${zaznam.spracovatel.firstName} ${zaznam.spracovatel.lastName}` : "",
           utvar: zaznam.utvar ? { id: zaznam.utvar.id, nazov: zaznam.utvar.nazov } : null,
           formaZaznamu: zaznam.formaZaznamu,
           vec: zaznam.vec,

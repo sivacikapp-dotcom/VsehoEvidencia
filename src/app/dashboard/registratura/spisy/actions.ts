@@ -116,7 +116,7 @@ export async function updateSpis(spisId: number, formData: FormData): Promise<Re
         rok: !isNaN(rok) ? rok : spis.rok,
         utvarId: utvarId && !isNaN(utvarId) ? utvarId : null,
         status,
-        spracovatelId: !isNaN(spracovatelId) ? spracovatelId : spis.spracovatelId,
+        spracovatelId: (spracovatelId !== null && !isNaN(spracovatelId)) ? spracovatelId : spis.spracovatelId,
         datumUzatvorenia,
       },
     })

@@ -50,7 +50,7 @@ type ZaznamDetail = {
   cisloZaznamu: string
   kategoria: ZaznamKategoria
   rok: number
-  spracovatelId: number
+  spracovatelId: number | null
   spracovatel: string
   utvar: { id: number; nazov: string } | null
   formaZaznamu: RegZaznamType
@@ -561,13 +561,13 @@ export default function ZaznamDetailClient({ zaznam, utvary, subjekty, spracovat
                 <div>
                   <label className={labelCls}>Spracovateľ</label>
                   {isAdmin ? (
-                    <select name="spracovatelId" form="zaznam-edit" defaultValue={zaznam.spracovatelId} className={inputCls}>
+                    <select name="spracovatelId" form="zaznam-edit" defaultValue={zaznam.spracovatelId ?? undefined} className={inputCls}>
                       {spracovatelov.map(u => <option key={u.id} value={u.id}>{u.lastName} {u.firstName}</option>)}
                     </select>
                   ) : (
                     <>
                       <p className="text-sm text-gray-800 dark:text-gray-200 py-1">{zaznam.spracovatel}</p>
-                      <input type="hidden" name="spracovatelId" form="zaznam-edit" value={zaznam.spracovatelId} />
+                      <input type="hidden" name="spracovatelId" form="zaznam-edit" value={zaznam.spracovatelId ?? undefined} />
                     </>
                   )}
                 </div>

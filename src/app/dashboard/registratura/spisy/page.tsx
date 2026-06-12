@@ -36,7 +36,7 @@ export default async function SpisyPage() {
     nazov: s.nazov,
     planZnacka: s.plan.znacka,
     planNazov: s.plan.nazov,
-    spracovatel: `${s.spracovatel.firstName} ${s.spracovatel.lastName}`,
+    spracovatel: s.spracovatel ? `${s.spracovatel.firstName} ${s.spracovatel.lastName}` : "",
     status: s.status,
     datumOtvorenia: s.datumOtvorenia.toISOString().split("T")[0],
     datumUzatvorenia: s.datumUzatvorenia ? s.datumUzatvorenia.toISOString().split("T")[0] : null,

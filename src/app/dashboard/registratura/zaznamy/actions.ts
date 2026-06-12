@@ -13,7 +13,7 @@ import type { ZaznamKategoria, ZaznamDovernost, RegZaznamType } from "@/generate
 
 type Result = { error?: string; success?: boolean; id?: number }
 
-function canManageZaznam(roles: string[], zaznam: { spracovatelId: number }, userId: number) {
+function canManageZaznam(roles: string[], zaznam: { spracovatelId: number | null }, userId: number) {
   if (roles.includes("SPRAVCA_REGISTRATURY") || roles.includes("SPRAVCA_APLIKACIE")) return true
   return roles.includes("SPRACOVATEL_REGISTRATURY") && zaznam.spracovatelId === userId
 }
@@ -141,7 +141,7 @@ export async function updateZaznam(zaznamId: number, formData: FormData): Promis
         dovernost,
         rok,
         stav,
-        spracovatelId: !isNaN(spracovatelId) ? spracovatelId : zaznam.spracovatelId,
+        spracovatelId: (spracovatelId !== null && !isNaN(spracovatelId)) ? spracovatelId : zaznam.spracovatelId,
         utvarId: utvarId && !isNaN(utvarId) ? utvarId : null,
         sposobVybavenia,
       },
