@@ -37,10 +37,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // Prevent pdf-parse / pdfjs-dist from being bundled into SSR chunks.
-  // Without this, pdfjs-dist runs its module-level code (DOMMatrix reference) at server
-  // startup and crashes the Vercel Lambda before any request is handled.
-  serverExternalPackages: ["pdf-parse"],
+  // Keep these packages out of the Turbopack SSR bundle:
+  // - pdf-parse / pdfjs-dist: references DOMMatrix at module init, crashes Lambda startup
+  // - @node-rs/argon2: Rust-compiled native binary, must stay as a real require()
+  serverExternalPackages: ["pdf-parse", "@node-rs/argon2"],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
