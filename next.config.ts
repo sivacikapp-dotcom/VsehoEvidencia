@@ -37,6 +37,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  // Prevent pdf-parse / pdfjs-dist from being bundled into SSR chunks.
+  // Without this, pdfjs-dist runs its module-level code (DOMMatrix reference) at server
+  // startup and crashes the Vercel Lambda before any request is handled.
+  serverExternalPackages: ["pdf-parse"],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
