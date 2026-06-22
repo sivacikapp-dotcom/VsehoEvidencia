@@ -25,7 +25,6 @@ export default async function DashboardLayout({
     prisma.notification.findMany({
       where: { userId, mustAcknowledge: false, dismissedAt: null },
       orderBy: { createdAt: "desc" },
-      take: 30,
       include: { document: { select: { agendaId: true } } },
     }),
   ])

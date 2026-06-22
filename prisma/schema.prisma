@@ -384,6 +384,7 @@ model Document {
   znacka                String
   nazov                 String
   datumSchvalenia       DateTime
+  datumUcinnosti        DateTime?       // defaults to datumSchvalenia if not set
   datumPrvehoSchvalenia DateTime?       // null for v1; copied from v1 for v2+
   version               Int             @default(1)
   parentId              Int?
@@ -393,6 +394,7 @@ model Document {
   status                DocumentStatus  @default(PUBLISHED)
   prilohaPath           String?
   prilohaName           String?
+  prilohaLink           String?
   textContent           String?
   confidentiality       Confidentiality @default(INTERNI)
   agendaId              Int
@@ -405,6 +407,10 @@ model Document {
   notifications         Notification[]
   createdAt             DateTime        @default(now())
   updatedAt             DateTime        @updatedAt
+
+  // Uniqueness of znacka per agenda is enforced at application level (createDocument / updateDocument)
+  // for root documents only (parentId IS NULL) — versions share znacka but have parentId set.
+  @@index([znacka, agendaId, parentId])
 }
 
 model AgendaGestor {

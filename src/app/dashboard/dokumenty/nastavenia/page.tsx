@@ -11,14 +11,16 @@ export default async function NastaveniaDokumentyPage() {
   if (!session.user.roles.includes("SPRAVCA_DOKUMENTOV")) redirect("/dashboard")
 
   const raw = await prisma.user.findMany({
-    select: { id: true, firstName: true, lastName: true, roles: true },
-    orderBy: { lastName: "asc" },
+    select: { id: true, firstName: true, lastName: true, email: true, roles: true },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
   })
 
   const users = raw.map(u => ({
     id: u.id,
     firstName: u.firstName,
     lastName: u.lastName,
+    email: u.email,
+    roles: u.roles as string[],
     hasGestorAgendy:    u.roles.includes("GESTOR_AGENDY"),
     hasGestorDokumentu: u.roles.includes("GESTOR_DOKUMENTU"),
   }))

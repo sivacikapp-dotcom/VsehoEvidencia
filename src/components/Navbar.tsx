@@ -12,7 +12,7 @@ import {
 import type { Role } from "@/generated/prisma/enums"
 import { useTheme } from "./ThemeProvider"
 import { changePassword } from "@/app/dashboard/my-card/actions"
-import { dismissNotification, fetchSoftNotifications } from "@/app/dashboard/notifications/actions"
+import { dismissNotification, acceptNotification, fetchSoftNotifications } from "@/app/dashboard/notifications/actions"
 
 export type SoftNotification = {
   id: number
@@ -60,6 +60,8 @@ const roleBadgeColors: Record<Role, string> = {
   GESTOR_AGENDY:            "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
   GESTOR_DOKUMENTU:         "bg-cyan-100 text-cyan-700 dark:bg-cyan-900/40 dark:text-cyan-300",
 }
+
+const CONFIRM_TYPES = new Set(["ASSET_CHANGED", "DOCUMENT_ADDED", "DOCUMENT_DELETED"])
 
 const NOTIF_CONFIG: Record<string, { icon: React.ElementType; color: string }> = {
   ASSET_CHANGED:              { icon: Package,      color: "text-blue-500" },
@@ -223,6 +225,9 @@ export default function Navbar({ user, notifications }: NavbarProps) {
   const [dismissed, setDismissed] = useState<Set<number>>(new Set())
   const [remaining, setRemaining] = useState<number | null>(null)
   const [liveNotifications, setLiveNotifications] = useState<SoftNotification[]>(notifications)
+  const [confirming, setConfirming] = useState<number | null>(null)
+  const [confirmPending, setConfirmPending] = useState(false)
+  const [confirmError, setConfirmError] = useState("")
 
   const notifRef = useRef<HTMLDivElement>(null)
   const profileRef = useRef<HTMLDivElement>(null)
@@ -263,6 +268,12 @@ export default function Navbar({ user, notifications }: NavbarProps) {
     return () => document.removeEventListener("mousedown", onDown)
   }, [])
 
+  // Sync with server-provided prop (fires after router.refresh() even without pathname change)
+  useEffect(() => {
+    setLiveNotifications(notifications)
+    setDismissed(new Set())
+  }, [notifications])
+
   // Refresh notifications on each navigation so the bell stays in sync
   useEffect(() => {
     fetchSoftNotifications().then((data) => {
@@ -271,13 +282,36 @@ export default function Navbar({ user, notifications }: NavbarProps) {
     })
   }, [pathname])
 
-  async function handleDismiss(id: number) {
+  async function handleDismiss(id: number, type: string) {
+    if (CONFIRM_TYPES.has(type)) {
+      setConfirming(id)
+      setConfirmError("")
+      return
+    }
     setDismissed(prev => new Set(prev).add(id))
     await dismissNotification(id)
     fetchSoftNotifications().then((data) => {
       setLiveNotifications(data)
       setDismissed(new Set())
     })
+  }
+
+  async function handleConfirm() {
+    if (confirming === null) return
+    setConfirmPending(true)
+    setConfirmError("")
+    const result = await acceptNotification(confirming)
+    setConfirmPending(false)
+    if (result.error) {
+      setConfirmError(result.error)
+    } else {
+      setDismissed(prev => new Set(prev).add(confirming))
+      setConfirming(null)
+      fetchSoftNotifications().then((data) => {
+        setLiveNotifications(data)
+        setDismissed(new Set())
+      })
+    }
   }
 
   const visible = liveNotifications.filter(n => !dismissed.has(n.id))
@@ -369,9 +403,9 @@ export default function Navbar({ user, notifications }: NavbarProps) {
                           </div>
                         )}
                         <button
-                          onClick={() => handleDismiss(n.id)}
+                          onClick={() => handleDismiss(n.id, n.type)}
                           className="shrink-0 p-1 mt-3 text-gray-300 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-300 rounded transition-colors"
-                          title="Zatvoriť"
+                          title={CONFIRM_TYPES.has(n.type) ? "Potvrdiť a zavrieť" : "Zatvoriť"}
                         >
                           <X size={13} />
                         </button>
@@ -473,6 +507,54 @@ export default function Navbar({ user, notifications }: NavbarProps) {
       </header>
 
       {showChangePwd && <ChangePasswordModal onClose={() => setShowChangePwd(false)} />}
+
+      {confirming !== null && (() => {
+        const n = liveNotifications.find(x => x.id === confirming)
+        if (!n) return null
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
+                  <CheckCircle2 size={20} className="text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Potvrdenie zmeny</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Potvrďte, že ste oboznámený so zmenou</p>
+                </div>
+              </div>
+              <div className="px-6 py-4">
+                <div className="rounded-xl border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 p-4">
+                  <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">{n.title}</p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5 whitespace-pre-line">{n.message}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{n.createdAt}</p>
+                </div>
+              </div>
+              <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3">
+                {confirmError ? (
+                  <p className="text-sm text-red-600 dark:text-red-400">{confirmError}</p>
+                ) : (
+                  <button
+                    onClick={() => { setConfirming(null); setConfirmError("") }}
+                    disabled={confirmPending}
+                    className="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 disabled:opacity-60"
+                  >
+                    Zrušiť
+                  </button>
+                )}
+                <button
+                  onClick={handleConfirm}
+                  disabled={confirmPending}
+                  className="flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-60"
+                >
+                  {confirmPending ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  {confirmPending ? "Potvrdzujem..." : "Potvrdiť zmenu"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </>
   )
 }

@@ -7,9 +7,9 @@ import {
   FileText, Plus, Trash2, Pencil, X, Loader2,
   ChevronRight, ArrowLeft, Paperclip, Eye, EyeOff, Lock,
   UserPlus, UserMinus, Shield, Search, ArrowUpDown, ChevronUp, ChevronDown,
-  File, Building2,
+  File, Building2, GitBranch,
 } from "lucide-react"
-import { createDocument, updateDocument, deleteDocument, setAgendaGestor, searchDocuments, type DocSearchResult } from "../actions"
+import { createDocument, updateDocument, deleteDocument, setAgendaGestor, searchDocuments, createNewDocumentDraft, type DocSearchResult } from "../actions"
 import { fmtDate } from "@/lib/formatDate"
 import { MultiSelect } from "@/components/MultiSelect"
 
@@ -22,6 +22,10 @@ interface Document {
   datumSchvalenia: string
   confidentiality: Confidentiality
   prilohaName: string | null
+  prilohaLink: string | null
+  datumUcinnosti: string | null
+  status: string
+  parentId: number | null
   version: number
   canEdit: boolean
   canDelete: boolean
@@ -123,16 +127,134 @@ interface DocForm {
   znacka: string
   nazov: string
   datumSchvalenia: string
+  datumUcinnosti: string
   confidentiality: Confidentiality
   gestorId: number | null
+  accessUserIds: Set<string>
+  prilohaLink: string
+}
+
+function NewDocDraftModal({
+  agendaId, allUsers, gestorUsers, onClose, onCreated,
+}: {
+  agendaId: number
+  allUsers: { id: number; name: string; email: string }[]
+  gestorUsers: { id: number; name: string }[]
+  onClose: () => void
+  onCreated: (newId: number) => void
+}) {
+  const [nazov, setNazov] = useState("")
+  const [confidentiality, setConfidentiality] = useState<Confidentiality>("INTERNI")
+  const [gestorId, setGestorId] = useState<number | null>(null)
+  const [accessUserIds, setAccessUserIds] = useState<Set<string>>(new Set())
+  const [prilohaLink, setPrilohaLink] = useState("")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [fileName, setFileName] = useState<string | null>(null)
+
+  async function handleSubmit() {
+    if (!nazov.trim()) { setError("Názov je povinný"); return }
+    setPending(true); setError("")
+    const fd = new FormData()
+    fd.set("agendaId", String(agendaId))
+    fd.set("nazov", nazov.trim())
+    fd.set("confidentiality", confidentiality)
+    fd.set("prilohaLink", prilohaLink)
+    if (gestorId) fd.set("gestorId", String(gestorId))
+    if (confidentiality === "DOVERNI") accessUserIds.forEach((id) => fd.append("accessUserIds", id))
+    if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
+    const res = await createNewDocumentDraft(fd)
+    setPending(false)
+    if (res?.error) { setError(res.error); return }
+    if (res?.newDocumentId) onCreated(res.newDocumentId)
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-8 px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-lg my-auto">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Nový draft dokumentu</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Poradové číslo a dátum schválenia sa vyplnia pred schválením.</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"><X size={18} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov <span className="text-red-500">*</span></label>
+            <input value={nazov} onChange={(e) => setNazov(e.target.value)} placeholder="napr. Bezpečnostná politika" className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Úroveň dôvernosti</label>
+            <select value={confidentiality} onChange={(e) => setConfidentiality(e.target.value as Confidentiality)} className={selectCls}>
+              <option value="VEREJNY">Verejný</option>
+              <option value="INTERNI">Interný</option>
+              <option value="DOVERNI">Dôverný</option>
+            </select>
+          </div>
+          {confidentiality === "DOVERNI" && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Používatelia s prístupom <span className="text-red-500">*</span></label>
+              <div className="border border-gray-300 dark:border-gray-600 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 max-h-40 overflow-y-auto">
+                {allUsers.map((u) => {
+                  const checked = accessUserIds.has(String(u.id))
+                  return (
+                    <label key={u.id} className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${checked ? "bg-red-50 dark:bg-red-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                      <input type="checkbox" checked={checked} onChange={() => {
+                        setAccessUserIds((prev) => { const next = new Set(prev); next.has(String(u.id)) ? next.delete(String(u.id)) : next.add(String(u.id)); return next })
+                      }} className="w-3.5 h-3.5 rounded border-gray-300 text-red-600 focus:ring-red-500 shrink-0" />
+                      <div className="min-w-0">
+                        <p className={`text-sm truncate ${checked ? "font-medium text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-300"}`}>{u.name}</p>
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{u.email}</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Gestor dokumentu</label>
+            <select value={gestorId ?? ""} onChange={(e) => setGestorId(e.target.value ? parseInt(e.target.value) : null)} className={selectCls}>
+              <option value="">— Žiadny gestor —</option>
+              {gestorUsers.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Súbor</label>
+            <input ref={fileRef} type="file" onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+              className="block w-full text-sm text-gray-700 dark:text-gray-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-blue-50 dark:file:bg-blue-900/30 file:text-blue-700 dark:file:text-blue-400" />
+            {fileName && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{fileName}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Link na súbor</label>
+            <input value={prilohaLink} onChange={(e) => setPrilohaLink(e.target.value)} placeholder="https://..." className={inputCls} />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Zrušiť</button>
+          <button onClick={handleSubmit} disabled={pending} className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
+            {pending && <Loader2 size={14} className="animate-spin" />}
+            Vytvoriť draft
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const emptyForm: DocForm = {
   znacka: "",
   nazov: "",
   datumSchvalenia: "",
+  datumUcinnosti: "",
   confidentiality: "INTERNI",
   gestorId: null,
+  accessUserIds: new Set(),
+  prilohaLink: "",
 }
 
 export default function DocumentsClient({
@@ -150,6 +272,7 @@ export default function DocumentsClient({
   const router = useRouter()
   const [modal, setModal] = useState<"new" | "edit" | null>(null)
   const [editDoc, setEditDoc] = useState<Document | null>(null)
+  const [showNewDraftModal, setShowNewDraftModal] = useState(false)
   const [form, setForm] = useState<DocForm>(emptyForm)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -252,8 +375,11 @@ export default function DocumentsClient({
       znacka: doc.znacka,
       nazov: doc.nazov,
       datumSchvalenia: doc.datumSchvalenia,
+      datumUcinnosti: doc.datumUcinnosti ?? doc.datumSchvalenia,
       confidentiality: doc.confidentiality,
       gestorId: null,
+      accessUserIds: new Set(),
+      prilohaLink: doc.prilohaLink ?? "",
     })
     setEditDoc(doc)
     setFileName(null)
@@ -264,14 +390,24 @@ export default function DocumentsClient({
 
   async function handleSubmit() {
     setPending(true); setError("")
+    const effectiveUcinnosti = form.datumUcinnosti || form.datumSchvalenia
+    if (effectiveUcinnosti && form.datumSchvalenia && effectiveUcinnosti < form.datumSchvalenia) {
+      setError("Dátum účinnosti nesmie byť skôr ako dátum schválenia.")
+      setPending(false); return
+    }
     const fd = new FormData()
     fd.set("agendaId", String(agenda.id))
     fd.set("znacka", form.znacka)
     fd.set("nazov", form.nazov)
     fd.set("datumSchvalenia", form.datumSchvalenia)
+    fd.set("datumUcinnosti", effectiveUcinnosti)
     fd.set("confidentiality", form.confidentiality)
+    fd.set("prilohaLink", form.prilohaLink)
     if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
     if (modal === "new" && form.gestorId) fd.set("gestorId", String(form.gestorId))
+    if (modal === "new" && form.confidentiality === "DOVERNI") {
+      form.accessUserIds.forEach((id) => fd.append("accessUserIds", id))
+    }
     if (modal === "edit" && editDoc) {
       fd.set("documentId", String(editDoc.id))
       fd.set("removePriloha", removePriloha ? "true" : "false")
@@ -331,18 +467,26 @@ export default function DocumentsClient({
           </span>
         )}
         {canCreate && !isAppAdmin && (
-          <button
-            onClick={openNew}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
-          >
-            <Plus size={16} /> Nový dokument
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNewDraftModal(true)}
+              className="flex items-center gap-2 px-4 py-2 border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg text-sm font-medium transition-colors"
+            >
+              <GitBranch size={16} /> Nový draft
+            </button>
+            <button
+              onClick={openNew}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition-colors"
+            >
+              <Plus size={16} /> Nový dokument
+            </button>
+          </div>
         )}
       </div>
 
-      {/* Search bar */}
+      {/* Sticky toolbar — search + filter */}
       {documents.length > 0 && (
-        <div className="mb-4">
+        <div className="sticky top-0 z-10 -mx-8 px-8 pt-2 pb-3 bg-gray-50 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -379,6 +523,37 @@ export default function DocumentsClient({
               </label>
             ))}
           </div>
+
+          {!isSearchActive && (
+            <div className="flex gap-2 flex-wrap items-center mt-3">
+              <MultiSelect
+                placeholder="Dôvernosť"
+                options={availableConfidentialityOptions}
+                selected={filterConfidentiality}
+                onChange={setFilterConfidentiality}
+              />
+              {hasActiveFilters && (
+                <button
+                  onClick={clearAllFilters}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors"
+                >
+                  <X size={12} /> Zrušiť filtre
+                </button>
+              )}
+              {sortKey && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
+                  {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
+                  <span>{{ znacka: "Poradové číslo", nazov: "Názov", datumSchvalenia: "Dátum schválenia", confidentiality: "Dôvernosť" }[sortKey]}</span>
+                  <button type="button" onClick={() => setSortKey(null)} className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100">
+                    <X size={11} />
+                  </button>
+                </div>
+              )}
+              <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
+                {sorted.length} / {documents.length}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -391,40 +566,12 @@ export default function DocumentsClient({
       ) : isSearchActive ? (
         <AgendaSearchResults results={searchResults} searching={searching} query={searchQuery} agendaId={agenda.id} />
       ) : (
-        <>
-          {/* filters */}
-          <div className="flex gap-2 flex-wrap items-center mb-4">
-            <MultiSelect
-              placeholder="Dôvernosť"
-              options={availableConfidentialityOptions}
-              selected={filterConfidentiality}
-              onChange={setFilterConfidentiality}
-            />
-            {hasActiveFilters && (
-              <button
-                onClick={clearAllFilters}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-red-500 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-red-300 transition-colors"
-              >
-                <X size={12} /> Zrušiť filtre
-              </button>
-            )}
-            {sortKey && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 rounded-lg">
-                {sortDir === "asc" ? <ChevronUp size={12} className="shrink-0" /> : <ChevronDown size={12} className="shrink-0" />}
-                <span>{{ znacka: "Poradové číslo", nazov: "Názov", datumSchvalenia: "Dátum schválenia", confidentiality: "Dôvernosť" }[sortKey]}</span>
-                <button type="button" onClick={() => setSortKey(null)} className="ml-0.5 hover:text-blue-900 dark:hover:text-blue-100">
-                  <X size={11} />
-                </button>
-              </div>
-            )}
-            <span className="text-xs text-gray-400 dark:text-gray-500 ml-auto">
-              {sorted.length} / {documents.length}
-            </span>
-          </div>
-
-          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+        <div
+          className="mt-4 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl overflow-auto resize-y"
+          style={{ height: 359, minHeight: 200 }}
+        >
             <table className="w-full text-sm">
-              <thead>
+              <thead className="sticky top-0 z-[1]">
                 <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                   <Th label="Poradové číslo" colKey="znacka" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   <Th label="Názov" colKey="nazov" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
@@ -449,31 +596,44 @@ export default function DocumentsClient({
                       onClick={doc.canAccess ? () => router.push(`/dashboard/dokumenty/${agenda.id}/${doc.id}`) : undefined}
                       className={`transition-colors group ${doc.canAccess ? "hover:bg-gray-50 dark:hover:bg-gray-800/30 cursor-pointer" : "opacity-60 bg-red-50/30 dark:bg-red-900/5"}`}
                     >
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          {agendaSkratka && doc.canAccess && (
-                            <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
-                              SKNIC-{agendaSkratka}-{doc.znacka}-{doc.version}
-                            </span>
-                          )}
-                          <div className="flex items-center gap-1.5">
-                            <span className={`font-mono text-xs font-medium ${doc.canAccess ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}>
-                              {doc.znacka}
-                            </span>
-                            {doc.version > 1 && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                                v{doc.version}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={doc.canAccess ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}>{doc.nazov}</span>
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
-                        {fmtDate(doc.datumSchvalenia)}
-                      </td>
+                      {(() => {
+                        const isNewDocDraft = doc.parentId === null && doc.status === "DRAFT"
+                        return (
+                          <>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-0.5">
+                                {agendaSkratka && doc.canAccess && !isNewDocDraft && doc.znacka && (
+                                  <span className="font-mono text-[10px] text-gray-400 dark:text-gray-500 leading-tight">
+                                    SKNIC-{agendaSkratka}-{doc.znacka}-{doc.version}
+                                  </span>
+                                )}
+                                <div className="flex items-center gap-1.5">
+                                  {isNewDocDraft ? (
+                                    <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300 border border-orange-200 dark:border-orange-700">
+                                      <GitBranch size={11} /> Draft
+                                    </span>
+                                  ) : (
+                                    <span className={`font-mono text-xs font-medium ${doc.canAccess ? "text-blue-600 dark:text-blue-400" : "text-gray-400 dark:text-gray-500"}`}>
+                                      {doc.znacka}
+                                    </span>
+                                  )}
+                                  {!isNewDocDraft && doc.version > 1 && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                                      v{doc.version}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={doc.canAccess ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}>{doc.nazov}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-400 tabular-nums">
+                              {isNewDocDraft ? <span className="text-gray-300 dark:text-gray-600">—</span> : fmtDate(doc.datumSchvalenia)}
+                            </td>
+                          </>
+                        )
+                      })()}
                       <td className="px-4 py-3">
                         <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full ${confidentialityColors[doc.confidentiality]}`}>
                           {doc.confidentiality === "DOVERNI" && <Lock size={11} />}
@@ -542,8 +702,7 @@ export default function DocumentsClient({
                 )}
               </tbody>
             </table>
-          </div>
-        </>
+        </div>
       )}
 
       {/* Gestori agendy – only for admin */}
@@ -638,7 +797,27 @@ export default function DocumentsClient({
                 <input
                   type="date"
                   value={form.datumSchvalenia}
-                  onChange={(e) => setForm((f) => ({ ...f, datumSchvalenia: e.target.value }))}
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setForm((f) => ({
+                      ...f,
+                      datumSchvalenia: val,
+                      datumUcinnosti: f.datumUcinnosti === f.datumSchvalenia || f.datumUcinnosti === "" ? val : f.datumUcinnosti,
+                    }))
+                  }}
+                  className={inputCls}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Dátum účinnosti
+                </label>
+                <input
+                  type="date"
+                  value={form.datumUcinnosti || form.datumSchvalenia}
+                  min={form.datumSchvalenia || undefined}
+                  onChange={(e) => setForm((f) => ({ ...f, datumUcinnosti: e.target.value }))}
                   className={inputCls}
                 />
               </div>
@@ -657,6 +836,49 @@ export default function DocumentsClient({
                   <option value="DOVERNI">Dôverný</option>
                 </select>
               </div>
+
+              {modal === "new" && form.confidentiality === "DOVERNI" && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Používatelia s prístupom <span className="text-red-500">*</span>
+                  </label>
+                  <div className="border border-gray-300 dark:border-gray-600 rounded-lg divide-y divide-gray-100 dark:divide-gray-700 max-h-48 overflow-y-auto">
+                    {allUsers.map((u) => {
+                      const checked = form.accessUserIds.has(String(u.id))
+                      return (
+                        <label
+                          key={u.id}
+                          className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors ${
+                            checked ? "bg-red-50 dark:bg-red-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setForm((f) => {
+                                const next = new Set(f.accessUserIds)
+                                next.has(String(u.id)) ? next.delete(String(u.id)) : next.add(String(u.id))
+                                return { ...f, accessUserIds: next }
+                              })
+                            }}
+                            className="w-3.5 h-3.5 rounded border-gray-300 text-red-600 focus:ring-red-500 shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <p className={`text-sm truncate ${checked ? "font-medium text-red-700 dark:text-red-300" : "text-gray-700 dark:text-gray-300"}`}>{u.name}</p>
+                            <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{u.email}</p>
+                          </div>
+                        </label>
+                      )
+                    })}
+                  </div>
+                  {form.accessUserIds.size === 0 && (
+                    <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
+                      Žiadny používateľ s prístupom — dokument bude prístupný len gestorovi a správcom.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {modal === "new" && (
                 <div>
@@ -712,6 +934,18 @@ export default function DocumentsClient({
                 )}
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Link na súbor
+                </label>
+                <input
+                  value={form.prilohaLink}
+                  onChange={(e) => setForm((f) => ({ ...f, prilohaLink: e.target.value }))}
+                  placeholder="https://..."
+                  className={inputCls}
+                />
+              </div>
+
               {error && <p className="text-sm text-red-500">{error}</p>}
             </div>
 
@@ -730,6 +964,17 @@ export default function DocumentsClient({
             </div>
           </div>
         </div>
+      )}
+
+      {/* New Document Draft Modal */}
+      {showNewDraftModal && (
+        <NewDocDraftModal
+          agendaId={agenda.id}
+          allUsers={allUsers}
+          gestorUsers={gestorUsers}
+          onClose={() => setShowNewDraftModal(false)}
+          onCreated={(id) => { setShowNewDraftModal(false); router.push(`/dashboard/dokumenty/${agenda.id}/${id}`) }}
+        />
       )}
     </div>
   )

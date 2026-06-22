@@ -4,10 +4,27 @@ import { useState } from "react"
 import { Loader2, Check } from "lucide-react"
 import { updateDokumentyRoles } from "./actions"
 
+const ROLE_LABELS: Record<string, string> = {
+  PRIJEMCA: "Príjemca",
+  NADRIADENY: "Nadriadený",
+  BEZPECNOSTNY_PRACOVNIK: "Bezpečnostný pracovník",
+  SPRAVCA_MAJETKU: "Správca majetku",
+  SPRAVCA_PRACOVNYCH_CIEST: "Správca pracovných ciest",
+  SPRAVCA_APLIKACIE: "Správca aplikácie",
+  SPRAVCA_REGISTRATURY: "Správca registratúry",
+  PRACOVNIK_PODATELNE: "Pracovník podateľne",
+  SPRACOVATEL_REGISTRATURY: "Spracovateľ registratúry",
+  SPRAVCA_DOKUMENTOV: "Správca dokumentov",
+  GESTOR_AGENDY: "Gestor agendy",
+  GESTOR_DOKUMENTU: "Gestor dokumentu",
+}
+
 type UserRow = {
   id: number
   firstName: string
   lastName: string
+  email: string
+  roles: string[]
   hasGestorAgendy: boolean
   hasGestorDokumentu: boolean
 }
@@ -88,8 +105,14 @@ export default function NastaveniaDokumentyClient({ users: initial }: { users: U
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
               {users.map(u => (
                 <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="px-4 py-3 font-medium text-gray-900 dark:text-gray-100">
-                    {u.lastName} {u.firstName}
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{u.lastName} {u.firstName}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">{u.email}</p>
+                    {u.roles.length > 0 && (
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                        {u.roles.map(r => ROLE_LABELS[r] ?? r).join(", ")}
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <ToggleCell

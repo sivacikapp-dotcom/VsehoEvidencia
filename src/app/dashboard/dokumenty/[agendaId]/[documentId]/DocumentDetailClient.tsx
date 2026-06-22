@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import {
   ArrowLeft, ChevronRight, Pencil, X, Loader2, Paperclip,
-  Download, Lock, Eye, EyeOff, Users, UserPlus, UserMinus, Shield,
+  Download, ExternalLink, Lock, Eye, EyeOff, Users, UserPlus, UserMinus, Shield,
   Plus, Trash2, History, GitBranch, AlertTriangle, MessageSquare, Send, ChevronDown, ChevronUp,
 } from "lucide-react"
 import {
   updateDocument, deleteDocument, grantDocumentAccess, revokeDocumentAccess, setDocumentGestor,
   createDocumentAttachment, updateDocumentAttachment, deleteDocumentAttachment,
   grantAttachmentAccess, revokeAttachmentAccess,
-  createDocumentDraft, approveDocumentDraft,
+  createDocumentDraft, approveDocumentDraft, approveNewDocumentDraft,
   createAttachmentDraft, approveAttachmentDraft,
   createDocumentNote, updateDocumentNote, deleteDocumentNote,
   addDocumentAuxFile, deleteDocumentAuxFile,
@@ -62,8 +62,10 @@ interface DocumentData {
   datumSchvalenia: string
   datumPrvehoSchvalenia: string | null
   confidentiality: Confidentiality
+  datumUcinnosti: string | null
   prilohaPath: string | null
   prilohaName: string | null
+  prilohaLink: string | null
   agendaId: number
   agendaName: string
   agendaSkratka: string | null
@@ -291,6 +293,79 @@ function AttachmentModal({ mode, documentId, defaultZnacka, defaultConfidentiali
   )
 }
 
+// ─── Approve New Document Draft Modal ────────────────────────────────────────
+function ApproveNewDraftModal({
+  documentId, initialZnacka = "", initialDatum = "", onClose, onApproved,
+}: {
+  documentId: number
+  initialZnacka?: string
+  initialDatum?: string
+  onClose: () => void
+  onApproved: () => void
+}) {
+  const today = new Date().toISOString().split("T")[0]
+  const [znacka, setZnacka] = useState(initialZnacka)
+  const [datumSchvalenia, setDatumSchvalenia] = useState(initialDatum || today)
+  const [datumUcinnosti, setDatumUcinnosti] = useState(initialDatum || today)
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState("")
+
+  async function handleSubmit() {
+    setPending(true); setError("")
+    const fd = new FormData()
+    fd.set("documentId", String(documentId))
+    fd.set("znacka", znacka.trim())
+    fd.set("datumSchvalenia", datumSchvalenia)
+    fd.set("datumUcinnosti", datumUcinnosti || datumSchvalenia)
+    const res = await approveNewDocumentDraft(fd)
+    setPending(false)
+    if (res?.error) { setError(res.error); return }
+    onApproved()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md p-6">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Schváliť nový dokument</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Vyplňte povinné polia pred schválením draftu.</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-lg"><X size={18} /></button>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Poradové číslo <span className="text-red-500">*</span></label>
+            <input value={znacka} onChange={(e) => setZnacka(e.target.value)} placeholder="napr. 1-2025" className={inputCls} autoFocus />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum schválenia <span className="text-red-500">*</span></label>
+            <input type="date" value={datumSchvalenia} onChange={(e) => {
+              const val = e.target.value
+              setDatumSchvalenia(val)
+              setDatumUcinnosti((prev) => prev === datumSchvalenia || !prev ? val : prev)
+            }} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum účinnosti</label>
+            <input type="date" value={datumUcinnosti || datumSchvalenia} min={datumSchvalenia || undefined}
+              onChange={(e) => setDatumUcinnosti(e.target.value)} className={inputCls} />
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+        </div>
+        <div className="flex gap-3 mt-6 justify-end">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Zrušiť</button>
+          <button onClick={handleSubmit} disabled={pending} className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium disabled:opacity-60">
+            {pending && <Loader2 size={14} className="animate-spin" />}
+            Schváliť dokument
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── New Document Draft Modal ─────────────────────────────────────────────────
 interface NewDocDraftModalProps {
   doc: DocumentData
@@ -305,21 +380,30 @@ function NewDocDraftModal({ doc, nextZnacka, nextVersion, onClose, onCreated }: 
   const [znacka, setZnacka] = useState(nextZnacka)
   const [nazov, setNazov] = useState(doc.nazov)
   const [datumSchvalenia, setDatumSchvalenia] = useState(today)
+  const [datumUcinnosti, setDatumUcinnosti] = useState(today)
   const [confidentiality, setConfidentiality] = useState<Confidentiality>(doc.confidentiality)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
   const fileRef = useRef<HTMLInputElement>(null)
   const [fileName, setFileName] = useState<string | null>(null)
   const [keepPriloha, setKeepPriloha] = useState(!!doc.prilohaName)
+  const [prilohaLink, setPrilohaLink] = useState(doc.prilohaLink ?? "")
 
   async function handleSubmit() {
     setPending(true); setError("")
+    const effectiveUcinnosti = datumUcinnosti || datumSchvalenia
+    if (effectiveUcinnosti < datumSchvalenia) {
+      setError("Dátum účinnosti nesmie byť skôr ako dátum schválenia.")
+      setPending(false); return
+    }
     const fd = new FormData()
     fd.set("sourceDocumentId", String(doc.id))
     fd.set("znacka", znacka.trim())
     fd.set("nazov", nazov.trim())
     fd.set("datumSchvalenia", datumSchvalenia)
+    fd.set("datumUcinnosti", effectiveUcinnosti)
     fd.set("confidentiality", confidentiality)
+    fd.set("prilohaLink", prilohaLink)
     fd.set("keepPriloha", keepPriloha ? "true" : "false")
     if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
     const res = await createDocumentDraft(fd)
@@ -350,7 +434,21 @@ function NewDocDraftModal({ doc, nextZnacka, nextVersion, onClose, onCreated }: 
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Plánovaný dátum schválenia <span className="text-red-500">*</span></label>
-            <input type="date" value={datumSchvalenia} onChange={(e) => setDatumSchvalenia(e.target.value)} className={inputCls} />
+            <input type="date" value={datumSchvalenia} onChange={(e) => {
+              const val = e.target.value
+              setDatumSchvalenia(val)
+              setDatumUcinnosti((prev) => prev === datumSchvalenia || !prev ? val : prev)
+            }} className={inputCls} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Plánovaný dátum účinnosti</label>
+            <input
+              type="date"
+              value={datumUcinnosti || datumSchvalenia}
+              min={datumSchvalenia || undefined}
+              onChange={(e) => setDatumUcinnosti(e.target.value)}
+              className={inputCls}
+            />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Úroveň dôvernosti</label>
@@ -382,6 +480,15 @@ function NewDocDraftModal({ doc, nextZnacka, nextVersion, onClose, onCreated }: 
                 )}
               </div>
             )}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Link na súbor</label>
+            <input
+              value={prilohaLink}
+              onChange={(e) => setPrilohaLink(e.target.value)}
+              placeholder="https://..."
+              className={inputCls}
+            />
           </div>
           {error && <p className="text-sm text-red-500">{error}</p>}
         </div>
@@ -425,8 +532,11 @@ export default function DocumentDetailClient({
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState({
     znacka: doc.znacka, nazov: doc.nazov,
-    datumSchvalenia: doc.datumSchvalenia, confidentiality: doc.confidentiality,
+    datumSchvalenia: doc.datumSchvalenia,
+    datumUcinnosti: doc.datumUcinnosti ?? doc.datumSchvalenia,
+    confidentiality: doc.confidentiality,
     gestorId: (doc.gestors[0]?.id ?? null) as number | null,
+    prilohaLink: doc.prilohaLink ?? "",
   })
   const [pending, setPending] = useState(false)
   const [error, setError] = useState("")
@@ -452,8 +562,11 @@ export default function DocumentDetailClient({
 
   // New document draft modal
   const [showNewDocDraft, setShowNewDocDraft] = useState(false)
+  const [showApproveNewDraftModal, setShowApproveNewDraftModal] = useState(false)
   const [approvingDoc, setApprovingDoc] = useState(false)
   const [deletingDoc, setDeletingDoc] = useState(false)
+
+  const isNewDocDraft = doc.parentId === null && doc.status === "DRAFT"
 
   // Notes state — initialNotes comes directly from server props (router.refresh() updates them)
   const [newNoteText, setNewNoteText] = useState("")
@@ -475,7 +588,7 @@ export default function DocumentDetailClient({
 
   const currentGestor = doc.gestors[0] ?? null
   const accessIds = new Set(doc.accesses.map((a) => a.id))
-  const cisloDokumentu = doc.agendaSkratka ? `SKNIC-${doc.agendaSkratka}-${doc.znacka}-${doc.version}` : null
+  const cisloDokumentu = (!isNewDocDraft && doc.agendaSkratka && doc.znacka) ? `SKNIC-${doc.agendaSkratka}-${doc.znacka}-${doc.version}` : null
 
   // Group attachments by family (parentId ?? id = rootId)
   const attByRoot = new Map<number, AttachmentData[]>()
@@ -488,11 +601,18 @@ export default function DocumentDetailClient({
 
   async function handleSave() {
     setPending(true); setError("")
+    const effectiveUcinnosti = form.datumUcinnosti || form.datumSchvalenia
+    if (effectiveUcinnosti && form.datumSchvalenia && effectiveUcinnosti < form.datumSchvalenia) {
+      setError("Dátum účinnosti nesmie byť skôr ako dátum schválenia.")
+      setPending(false); return
+    }
     const fd = new FormData()
     fd.set("documentId", String(doc.id))
     fd.set("znacka", form.znacka); fd.set("nazov", form.nazov)
     fd.set("datumSchvalenia", form.datumSchvalenia)
+    fd.set("datumUcinnosti", effectiveUcinnosti)
     fd.set("confidentiality", form.confidentiality)
+    fd.set("prilohaLink", form.prilohaLink)
     fd.set("removePriloha", removePriloha ? "true" : "false")
     if (fileRef.current?.files?.[0]) fd.set("priloha", fileRef.current.files[0])
     const res = await updateDocument(fd)
@@ -640,7 +760,7 @@ export default function DocumentDetailClient({
           {doc.agendaName}
         </Link>
         <ChevronRight size={13} />
-        <span className="text-gray-700 dark:text-gray-300 font-mono text-xs">{doc.znacka}</span>
+        <span className="text-gray-700 dark:text-gray-300 font-mono text-xs">{doc.znacka || "(nový draft)"}</span>
       </div>
 
       {/* App admin read-only banner */}
@@ -676,10 +796,15 @@ export default function DocumentDetailClient({
         <div className="mb-4 flex items-start gap-3 px-4 py-3 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl">
           <AlertTriangle size={16} className="text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
           <div className="text-sm text-orange-800 dark:text-orange-300">
-            Toto je <strong>neschválený návrh verzie v{doc.version}</strong> — nie je verejne viditeľný.{" "}
-            <Link href={`/dashboard/dokumenty/${doc.agendaId}/${latestDocId}`} className="underline hover:no-underline">
-              Prejsť na aktuálnu verziu →
-            </Link>
+            {isNewDocDraft ? (
+              <>Toto je <strong>draft nového dokumentu</strong> — nie je verejne viditeľný. Pred schválením vyplňte poradové číslo a dátum schválenia.</>
+            ) : (
+              <>Toto je <strong>neschválený návrh verzie v{doc.version}</strong> — nie je verejne viditeľný.{" "}
+                <Link href={`/dashboard/dokumenty/${doc.agendaId}/${latestDocId}`} className="underline hover:no-underline">
+                  Prejsť na aktuálnu verziu →
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -689,14 +814,20 @@ export default function DocumentDetailClient({
         <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700">
           <div>
             <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
-                {cisloDokumentu ?? doc.znacka}
-              </span>
-              {doc.status === "DRAFT" ? (
+              {isNewDocDraft ? (
+                <span className="text-xs font-medium px-2 py-0.5 rounded bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-700">
+                  Nový dokument — bez čísla
+                </span>
+              ) : (
+                <span className="font-mono text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2 py-0.5 rounded">
+                  {cisloDokumentu ?? doc.znacka}
+                </span>
+              )}
+              {doc.status === "DRAFT" && !isNewDocDraft ? (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                   v_rev{doc.version}
                 </span>
-              ) : doc.version > 1 ? (
+              ) : doc.status === "PUBLISHED" && doc.version > 1 ? (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
                   v{doc.version}
                 </span>
@@ -723,14 +854,23 @@ export default function DocumentDetailClient({
           <div className="flex items-center gap-2 shrink-0">
             {/* Draft: Schváliť button */}
             {canEdit && doc.status === "DRAFT" && !editing && (
-              <button
-                onClick={handleApproveDoc}
-                disabled={approvingDoc}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-60"
-              >
-                {approvingDoc ? <Loader2 size={14} className="animate-spin" /> : <GitBranch size={14} />}
-                Schváliť verziu
-              </button>
+              isNewDocDraft ? (
+                <button
+                  onClick={() => setShowApproveNewDraftModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors"
+                >
+                  <GitBranch size={14} /> Schváliť dokument
+                </button>
+              ) : (
+                <button
+                  onClick={handleApproveDoc}
+                  disabled={approvingDoc}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-700 dark:text-green-400 border border-green-300 dark:border-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-60"
+                >
+                  {approvingDoc ? <Loader2 size={14} className="animate-spin" /> : <GitBranch size={14} />}
+                  Schváliť verziu
+                </button>
+              )
             )}
             {/* Published + latest: Vytvoriť návrh */}
             {canEdit && doc.isLatest && doc.status === "PUBLISHED" && !editing && !hasDraft && (
@@ -774,16 +914,39 @@ export default function DocumentDetailClient({
         {editing ? (
           <div className="px-6 py-5 space-y-4">
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Poradové číslo <span className="text-red-500">*</span></label>
-              <input value={form.znacka} onChange={(e) => setForm((f) => ({ ...f, znacka: e.target.value }))} placeholder="napr. 1-2024" className={inputCls} />
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Poradové číslo {!isNewDocDraft && <span className="text-red-500">*</span>}
+                {isNewDocDraft && <span className="text-gray-400 font-normal">(voliteľné — vyplní sa pred schválením)</span>}
+              </label>
+              <input value={form.znacka} onChange={(e) => setForm((f) => ({ ...f, znacka: e.target.value }))} placeholder={isNewDocDraft ? "bude vyplnené pred schválením" : "napr. 1-2024"} className={inputCls} />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Názov <span className="text-red-500">*</span></label>
               <input value={form.nazov} onChange={(e) => setForm((f) => ({ ...f, nazov: e.target.value }))} className={inputCls} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum schválenia <span className="text-red-500">*</span></label>
-              <input type="date" value={form.datumSchvalenia} onChange={(e) => setForm((f) => ({ ...f, datumSchvalenia: e.target.value }))} className={inputCls} />
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Dátum schválenia {!isNewDocDraft && <span className="text-red-500">*</span>}
+                {isNewDocDraft && <span className="text-gray-400 font-normal">(voliteľné — vyplní sa pred schválením)</span>}
+              </label>
+              <input type="date" value={form.datumSchvalenia} onChange={(e) => {
+                const val = e.target.value
+                setForm((f) => ({
+                  ...f,
+                  datumSchvalenia: val,
+                  datumUcinnosti: f.datumUcinnosti === f.datumSchvalenia || !f.datumUcinnosti ? val : f.datumUcinnosti,
+                }))
+              }} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dátum účinnosti</label>
+              <input
+                type="date"
+                value={form.datumUcinnosti || form.datumSchvalenia}
+                min={form.datumSchvalenia || undefined}
+                onChange={(e) => setForm((f) => ({ ...f, datumUcinnosti: e.target.value }))}
+                className={inputCls}
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Úroveň dôvernosti</label>
@@ -825,6 +988,15 @@ export default function DocumentDetailClient({
                 </div>
               )}
             </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Link na súbor</label>
+              <input
+                value={form.prilohaLink}
+                onChange={(e) => setForm((f) => ({ ...f, prilohaLink: e.target.value }))}
+                placeholder="https://..."
+                className={inputCls}
+              />
+            </div>
             {error && <p className="text-sm text-red-500">{error}</p>}
             <div className="flex gap-3 justify-end pt-2">
               <button onClick={() => setEditing(false)} className="flex items-center gap-1.5 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
@@ -838,10 +1010,21 @@ export default function DocumentDetailClient({
         ) : (
           <dl className="px-6 py-5 grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5">
             <Field label="Poradové číslo">
-              <span className="text-sm font-mono text-gray-900 dark:text-gray-100">{doc.znacka}</span>
+              {isNewDocDraft
+                ? <span className="text-sm text-gray-400 dark:text-gray-500 italic">Nevyplnené</span>
+                : <span className="text-sm font-mono text-gray-900 dark:text-gray-100">{doc.znacka}</span>}
             </Field>
             <Field label="Dátum schválenia">
-              <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>
+              {isNewDocDraft
+                ? <span className="text-sm text-gray-400 dark:text-gray-500 italic">Nevyplnený</span>
+                : <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtDate(doc.datumSchvalenia)}</span>}
+            </Field>
+            <Field label="Dátum účinnosti">
+              {isNewDocDraft
+                ? <span className="text-sm text-gray-400 dark:text-gray-500 italic">Nevyplnený</span>
+                : <span className="text-sm text-gray-900 dark:text-gray-100 tabular-nums">
+                    {fmtDate(doc.datumUcinnosti ?? doc.datumSchvalenia)}
+                  </span>}
             </Field>
             {doc.datumPrvehoSchvalenia ? (
               <Field label="Prvé schválenie">
@@ -872,6 +1055,14 @@ export default function DocumentDetailClient({
                 <span className="text-sm text-gray-400 dark:text-gray-500">Žiadny súbor</span>
               )}
             </Field>
+            {doc.prilohaLink && !attachmentOnlyMode && (
+              <Field label="Link na súbor">
+                <a href={doc.prilohaLink} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400 hover:underline break-all">
+                  <ExternalLink size={14} className="shrink-0" />{doc.prilohaLink}
+                </a>
+              </Field>
+            )}
             {canSeeAuxFiles && (
               <div className="col-span-full">
                 <dt className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Pomocné súbory</dt>
@@ -1514,6 +1705,20 @@ export default function DocumentDetailClient({
           onCreated={(newId) => {
             setShowNewDocDraft(false)
             router.push(`/dashboard/dokumenty/${doc.agendaId}/${newId}`)
+          }}
+        />
+      )}
+
+      {showApproveNewDraftModal && (
+        <ApproveNewDraftModal
+          documentId={doc.id}
+          initialZnacka={doc.znacka}
+          initialDatum={form.datumSchvalenia}
+          onClose={() => setShowApproveNewDraftModal(false)}
+          onApproved={() => {
+            setShowApproveNewDraftModal(false)
+            router.push(`/dashboard/dokumenty/${doc.agendaId}/${doc.id}`)
+            router.refresh()
           }}
         />
       )}

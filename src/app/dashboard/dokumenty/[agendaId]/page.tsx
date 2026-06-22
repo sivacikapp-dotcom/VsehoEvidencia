@@ -68,7 +68,11 @@ export default async function AgendaPage({
     },
   })
 
-  const documents = rawDocs.map((doc) => {
+  const documents = rawDocs.flatMap((doc) => {
+    const isNewDocDraft = doc.parentId === null && doc.status === "DRAFT"
+    // New document drafts are only visible to agenda gestors and admins
+    if (isNewDocDraft && !isAdmin && !isAgendaGestor) return []
+
     const hasDirectAccess =
       doc.confidentiality !== "DOVERNI" ||
       isAdmin || isAgendaGestor ||
@@ -76,16 +80,20 @@ export default async function AgendaPage({
     const hasAnyAttachmentAccess = !isAppAdmin && doc.attachments.some(
       a => a.confidentiality !== "DOVERNI" || myAttachmentAccessIds.has(a.id)
     )
-    const attachmentOnlyAccess = !isAppAdmin && !hasDirectAccess && hasAnyAttachmentAccess
-    const canAccess = !isAppAdmin && (hasDirectAccess || attachmentOnlyAccess)
+    const attachmentOnlyAccess = !isAppAdmin && !isNewDocDraft && !hasDirectAccess && hasAnyAttachmentAccess
+    const canAccess = !isAppAdmin && (isNewDocDraft ? (isAdmin || isAgendaGestor) : (hasDirectAccess || attachmentOnlyAccess))
 
-    return {
+    return [{
       id: doc.id,
       znacka: isAppAdmin ? "••••••" : doc.znacka,
       nazov: doc.nazov,
       datumSchvalenia: isAppAdmin ? "••••••" : doc.datumSchvalenia.toISOString().split("T")[0],
+      datumUcinnosti: (isAppAdmin || isNewDocDraft) ? null : (doc.datumUcinnosti?.toISOString().split("T")[0] ?? doc.datumSchvalenia.toISOString().split("T")[0]),
       confidentiality: isAppAdmin ? ("VEREJNY" as typeof doc.confidentiality) : doc.confidentiality,
       prilohaName: (isAppAdmin || !canAccess || attachmentOnlyAccess) ? null : doc.prilohaName,
+      prilohaLink: (isAppAdmin || !canAccess || attachmentOnlyAccess) ? null : doc.prilohaLink,
+      status: doc.status,
+      parentId: doc.parentId,
       version: doc.version,
       canEdit: false,
       canDelete: canAccess && !attachmentOnlyAccess && (isAdmin || isAgendaGestor) && !isAppAdmin,
@@ -95,7 +103,7 @@ export default async function AgendaPage({
         id: g.user.id,
         name: `${g.user.firstName} ${g.user.lastName}`,
       })),
-    }
+    }]
   })
 
   return (

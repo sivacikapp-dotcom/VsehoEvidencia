@@ -138,12 +138,21 @@ export async function createDocument(formData: FormData) {
   const znacka = (formData.get("znacka") as string)?.trim()
   const nazov = (formData.get("nazov") as string)?.trim()
   const datumRaw = formData.get("datumSchvalenia") as string
+  const datumUcinnostiRaw = (formData.get("datumUcinnosti") as string) || datumRaw
   const confidentiality = formData.get("confidentiality") as string
   const file = formData.get("priloha") as File | null
+  const prilohaLink = (formData.get("prilohaLink") as string | null)?.trim() || undefined
 
   if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+  if (datumUcinnostiRaw < datumRaw) return { error: "Dátum účinnosti nesmie byť skôr ako dátum schválenia." }
+
+  const duplicate = await prisma.document.findFirst({
+    where: { znacka, agendaId, parentId: null },
+    select: { id: true },
+  })
+  if (duplicate) return { error: `Dokument s číslom „${znacka}" v tejto agende už existuje.` }
 
   let prilohaPath: string | undefined
   let prilohaName: string | undefined
@@ -166,10 +175,12 @@ export async function createDocument(formData: FormData) {
       znacka,
       nazov,
       datumSchvalenia: new Date(datumRaw),
+      datumUcinnosti: new Date(datumUcinnostiRaw),
       confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || "INTERNI",
       agendaId,
       prilohaPath,
       prilohaName,
+      prilohaLink,
       textContent,
     },
     include: { agenda: { select: { name: true } } },
@@ -179,6 +190,21 @@ export async function createDocument(formData: FormData) {
   const gestorId = gestorIdRaw ? parseInt(gestorIdRaw as string) : null
   if (gestorId) {
     await prisma.documentGestor.create({ data: { userId: gestorId, documentId: newDoc.id } })
+  }
+
+  if (newDoc.confidentiality === "DOVERNI") {
+    const accessUserIdStrings = formData.getAll("accessUserIds") as string[]
+    const accessUserIds = accessUserIdStrings.map(Number).filter(Boolean)
+    if (accessUserIds.length > 0) {
+      await prisma.documentAccess.createMany({
+        data: accessUserIds.map((targetUserId) => ({
+          userId: targetUserId,
+          documentId: newDoc.id,
+          grantedById: userId,
+        })),
+        skipDuplicates: true,
+      })
+    }
   }
 
   await notifyDocumentAdded(
@@ -216,13 +242,32 @@ export async function updateDocument(formData: FormData) {
   const znacka = (formData.get("znacka") as string)?.trim()
   const nazov = (formData.get("nazov") as string)?.trim()
   const datumRaw = formData.get("datumSchvalenia") as string
+  const datumUcinnostiRaw = (formData.get("datumUcinnosti") as string) || datumRaw
   const confidentiality = formData.get("confidentiality") as string
   const file = formData.get("priloha") as File | null
   const removePriloha = formData.get("removePriloha") === "true"
+  const prilohaLink = (formData.get("prilohaLink") as string | null)?.trim() || null
 
-  if (!znacka) return { error: "Poradové číslo je povinné" }
+  // New document drafts (parentId=null, status=DRAFT) have optional znacka and datumSchvalenia
+  const isNewDocDraft = doc.parentId === null && doc.status === "DRAFT"
+
   if (!nazov) return { error: "Názov je povinný" }
-  if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+  if (!isNewDocDraft) {
+    if (!znacka) return { error: "Poradové číslo je povinné" }
+    if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+  }
+  if (datumRaw && datumUcinnostiRaw && datumUcinnostiRaw < datumRaw)
+    return { error: "Dátum účinnosti nesmie byť skôr ako dátum schválenia." }
+
+  // Uniqueness check only when znacka is non-empty
+  if (znacka) {
+    const ownRootId = doc.parentId ?? doc.id
+    const duplicate = await prisma.document.findFirst({
+      where: { znacka, agendaId: doc.agendaId, parentId: null, id: { not: ownRootId } },
+      select: { id: true },
+    })
+    if (duplicate) return { error: `Dokument s číslom „${znacka}" v tejto agende už existuje.` }
+  }
 
   let prilohaPath = doc.prilohaPath
   let prilohaName = doc.prilohaName
@@ -244,23 +289,29 @@ export async function updateDocument(formData: FormData) {
     textContent = await extractDocText(storedName)
   }
 
+  const effectiveZnacka = znacka || doc.znacka
+  const effectiveDatum = datumRaw ? new Date(datumRaw) : doc.datumSchvalenia
+  const effectiveUcinnostiDate = datumUcinnostiRaw ? new Date(datumUcinnostiRaw) : effectiveDatum
+
   await prisma.document.update({
     where: { id: documentId },
     data: {
-      znacka,
+      znacka: effectiveZnacka,
       nazov,
-      datumSchvalenia: new Date(datumRaw),
+      datumSchvalenia: effectiveDatum,
+      datumUcinnosti: effectiveUcinnostiDate,
       confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || "INTERNI",
       prilohaPath,
       prilohaName,
+      prilohaLink,
       textContent,
     },
   })
   await createAuditLog({
     userId, userEmail: session.user.email, userName: session.user.name,
-    action: "UPDATE", entityType: "DOCUMENT", entityId: documentId, entityLabel: `${znacka} – ${nazov}`,
+    action: "UPDATE", entityType: "DOCUMENT", entityId: documentId, entityLabel: `${effectiveZnacka || "(bez čísla)"} – ${nazov}`,
     oldData: { znacka: doc.znacka, nazov: doc.nazov, confidentiality: doc.confidentiality },
-    newData: { znacka, nazov, confidentiality },
+    newData: { znacka: effectiveZnacka, nazov, confidentiality },
   })
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}/${documentId}`)
   revalidatePath(`/dashboard/dokumenty/${doc.agendaId}`)
@@ -355,13 +406,16 @@ export async function createDocumentDraft(formData: FormData) {
   const znacka = (formData.get("znacka") as string)?.trim()
   const nazov = (formData.get("nazov") as string)?.trim()
   const datumRaw = formData.get("datumSchvalenia") as string
+  const datumUcinnostiRaw = (formData.get("datumUcinnosti") as string) || datumRaw
   const confidentiality = formData.get("confidentiality") as string
   const file = formData.get("priloha") as File | null
   const keepPriloha = formData.get("keepPriloha") === "true"
+  const prilohaLink = (formData.get("prilohaLink") as string | null)?.trim() || null
 
   if (!znacka) return { error: "Poradové číslo je povinné" }
   if (!nazov) return { error: "Názov je povinný" }
   if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+  if (datumUcinnostiRaw < datumRaw) return { error: "Dátum účinnosti nesmie byť skôr ako dátum schválenia." }
 
   const nextVersion = source.version + 1
   const datumPrvehoSchvalenia = source.datumPrvehoSchvalenia ?? source.datumSchvalenia
@@ -388,11 +442,13 @@ export async function createDocumentDraft(formData: FormData) {
         znacka,
         nazov,
         datumSchvalenia: new Date(datumRaw),
+        datumUcinnosti: new Date(datumUcinnostiRaw),
         datumPrvehoSchvalenia,
         confidentiality: (confidentiality as "VEREJNY" | "INTERNI" | "DOVERNI") || source.confidentiality,
         agendaId: source.agendaId,
         prilohaPath,
         prilohaName,
+        prilohaLink,
         textContent,
         version: nextVersion,
         parentId: rootId,
@@ -455,6 +511,7 @@ export async function approveDocumentDraft(documentId: number) {
   const draft = await prisma.document.findUnique({ where: { id: documentId } })
   if (!draft) return { error: "Dokument neexistuje" }
   if (draft.status !== "DRAFT") return { error: "Dokument nie je v stave návrhu" }
+  if (draft.parentId === null) return { error: "Pre schválenie nového dokumentu použite formulár schválenia." }
 
   const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
   const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === draft.agendaId) ?? false
@@ -480,6 +537,138 @@ export async function approveDocumentDraft(documentId: number) {
     action: "UPDATE", entityType: "DOCUMENT", entityId: documentId,
     entityLabel: `${draft.znacka} – ${draft.nazov} (schválená v${draft.version})`,
     newData: { status: "PUBLISHED", isLatest: true },
+  })
+  revalidatePath(`/dashboard/dokumenty/${draft.agendaId}`)
+  revalidatePath(`/dashboard/dokumenty/${draft.agendaId}/${documentId}`)
+  return { success: true }
+}
+
+export async function createNewDocumentDraft(formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const user = await getUserDocContext(userId)
+
+  const agendaId = parseInt(formData.get("agendaId") as string)
+  if (isNaN(agendaId)) return { error: "Agenda je povinná" }
+
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === agendaId) ?? false
+  if (!isAdmin && !isAgendaGestor) throw new Error("Nemáte oprávnenie vytvárať návrh dokumentu")
+
+  const nazov = (formData.get("nazov") as string)?.trim()
+  if (!nazov) return { error: "Názov je povinný" }
+
+  const confidentiality = (formData.get("confidentiality") as "VEREJNY" | "INTERNI" | "DOVERNI") || "INTERNI"
+  const gestorId = formData.get("gestorId") ? parseInt(formData.get("gestorId") as string) : null
+  const prilohaLink = (formData.get("prilohaLink") as string | null)?.trim() || null
+  const file = formData.get("priloha") as File | null
+  const accessUserIds = formData.getAll("accessUserIds").map((id) => parseInt(id as string)).filter((n) => !isNaN(n))
+
+  let prilohaPath: string | null = null
+  let prilohaName: string | null = null
+  let textContent: string | null = null
+
+  if (file && file.size > 0) {
+    const uploadDir = path.join(process.cwd(), "uploads", "docs")
+    await mkdir(uploadDir, { recursive: true })
+    const ext = validateDocUpload(file)
+    const storedName = `${randomUUID()}${ext}`
+    const bytes = await file.arrayBuffer()
+    await writeFile(path.join(uploadDir, storedName), Buffer.from(bytes))
+    prilohaPath = storedName
+    prilohaName = file.name
+    textContent = await extractDocText(storedName)
+  }
+
+  const newDoc = await prisma.$transaction(async (tx) => {
+    const doc = await tx.document.create({
+      data: {
+        znacka: "",
+        nazov,
+        datumSchvalenia: new Date(),
+        confidentiality,
+        agendaId,
+        prilohaPath,
+        prilohaName,
+        prilohaLink,
+        textContent,
+        version: 1,
+        parentId: null,
+        isLatest: true,
+        status: "DRAFT",
+      },
+    })
+    if (gestorId) {
+      await tx.documentGestor.create({ data: { userId: gestorId, documentId: doc.id } })
+    }
+    if (confidentiality === "DOVERNI" && accessUserIds.length > 0) {
+      await tx.documentAccess.createMany({
+        data: accessUserIds.map((uid) => ({ userId: uid, documentId: doc.id, grantedById: userId })),
+        skipDuplicates: true,
+      })
+    }
+    return doc
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "CREATE", entityType: "DOCUMENT_DRAFT", entityId: newDoc.id,
+    entityLabel: `(nový draft) – ${nazov}`,
+    newData: { nazov, agendaId, status: "DRAFT" },
+  })
+  revalidatePath(`/dashboard/dokumenty/${agendaId}`)
+  return { success: true, newDocumentId: newDoc.id }
+}
+
+export async function approveNewDocumentDraft(formData: FormData) {
+  const session = await getSession({ mutation: true })
+  const userId = parseInt(session.user.id)
+  const user = await getUserDocContext(userId)
+
+  const documentId = parseInt(formData.get("documentId") as string)
+  const znacka = (formData.get("znacka") as string)?.trim()
+  const datumRaw = formData.get("datumSchvalenia") as string
+  const datumUcinnostiRaw = (formData.get("datumUcinnosti") as string) || datumRaw
+
+  if (!znacka) return { error: "Poradové číslo je povinné" }
+  if (!datumRaw) return { error: "Dátum schválenia je povinný" }
+  if (datumUcinnostiRaw && datumUcinnostiRaw < datumRaw)
+    return { error: "Dátum účinnosti nesmie byť skôr ako dátum schválenia." }
+
+  const draft = await prisma.document.findUnique({ where: { id: documentId } })
+  if (!draft) return { error: "Dokument neexistuje" }
+  if (draft.status !== "DRAFT") return { error: "Dokument nie je v stave návrhu" }
+  if (draft.parentId !== null) return { error: "Toto nie je draft nového dokumentu" }
+
+  const isAdmin = user?.roles.includes("SPRAVCA_DOKUMENTOV") ?? false
+  const isAgendaGestor = user?.agendaGestors.some((g) => g.agendaId === draft.agendaId) ?? false
+  const isDocGestor = user?.documentGestors.some((g) => g.documentId === documentId) ?? false
+  if (!isAdmin && !isAgendaGestor && !isDocGestor) throw new Error("Nemáte oprávnenie schvaľovať návrh")
+
+  const duplicate = await prisma.document.findFirst({
+    where: { znacka, agendaId: draft.agendaId, parentId: null, id: { not: documentId } },
+    select: { id: true },
+  })
+  if (duplicate) return { error: `Dokument s číslom „${znacka}" v tejto agende už existuje.` }
+
+  const datum = new Date(datumRaw)
+  await prisma.document.update({
+    where: { id: documentId },
+    data: {
+      znacka,
+      datumSchvalenia: datum,
+      datumUcinnosti: datumUcinnostiRaw ? new Date(datumUcinnostiRaw) : datum,
+      datumPrvehoSchvalenia: datum,
+      status: "PUBLISHED",
+      isLatest: true,
+    },
+  })
+
+  await createAuditLog({
+    userId, userEmail: session.user.email, userName: session.user.name,
+    action: "UPDATE", entityType: "DOCUMENT", entityId: documentId,
+    entityLabel: `${znacka} – ${draft.nazov} (schválený nový dokument)`,
+    newData: { znacka, datumSchvalenia: datumRaw, status: "PUBLISHED", isLatest: true },
   })
   revalidatePath(`/dashboard/dokumenty/${draft.agendaId}`)
   revalidatePath(`/dashboard/dokumenty/${draft.agendaId}/${documentId}`)

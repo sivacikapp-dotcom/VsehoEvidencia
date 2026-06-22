@@ -29,7 +29,6 @@ export async function fetchSoftNotifications(): Promise<SoftNotificationData[]> 
   const raw = await prisma.notification.findMany({
     where: { userId, mustAcknowledge: false, dismissedAt: null },
     orderBy: { createdAt: "desc" },
-    take: 30,
     include: { document: { select: { agendaId: true } } },
   })
   return raw.map((n) => ({
